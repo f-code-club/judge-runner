@@ -2,5 +2,12 @@
 name = "judge-runner"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/f-code-club/judge-runner"
+homepage = "https://github.com/f-code-club/judge-runner"
+description = """
+A code runner library for online judge system
+"""
 
 [dependencies]
