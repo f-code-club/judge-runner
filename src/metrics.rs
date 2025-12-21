@@ -3,6 +3,7 @@ pub enum Metrics {
     WrongAnswer,
     TimeLimitExceeded,
     CompilationError,
+    MemoryLimitExceeded,
     RuntimeError,
-    EdlenessLimitExceeded,
+    IdleTimeLimitExceeded,
 }
