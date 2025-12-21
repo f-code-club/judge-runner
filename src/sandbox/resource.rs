@@ -12,11 +12,17 @@ pub struct Resource {
     #[builder(default = Byte::GIGABYTE)]
     pub memory: Byte,
 
-    #[builder(default = Duration::from_secs(1))]
+    #[builder(default = Duration::from_millis(100))]
     pub cpu_quota: Duration,
 
-    #[builder(default = Duration::from_secs(1))]
+    #[builder(default = Duration::from_millis(100))]
     pub cpu_period: Duration,
+}
+
+impl Default for Resource {
+    fn default() -> Self {
+        Resource::builder().build()
+    }
 }
 
 impl TryFrom<Resource> for Cgroup {
