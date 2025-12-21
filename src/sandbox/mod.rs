@@ -3,31 +3,37 @@ mod resource;
 use std::{process::Child, time::Duration};
 
 use anyhow::Result;
+use bon::Builder;
 use cgroups_rs::{CgroupPid, fs::Cgroup};
 pub use resource::Resource;
 
 use crate::Metrics;
 
+#[derive(Builder)]
 pub struct Sandbox {
-    pub cgroup: Cgroup,
+    #[builder(start_fn)]
     pub cpu_time_limit: Duration,
+
+    #[builder(start_fn)]
+    pub poll: Duration,
+
+    // TODO: need further testing
+    #[builder(field = Duration::max(cpu_time_limit * 2, cpu_time_limit + Duration::from_secs(2)))]
     pub wall_time_limit: Duration,
+
+    // TODO: need further testing
+    #[builder(field = poll / 10)]
+    pub cpu_idleness_limit: Duration,
+
+    // TODO: need further testing
+    #[builder(field = wall_time_limit / 3)]
+    pub idless_limit: Duration,
+
+    #[builder(with = |resource: Resource| -> Result<_> { Cgroup::try_from(resource) })]
+    pub cgroup: Cgroup,
 }
 
 impl Sandbox {
-    pub fn new(resource: Resource, time_limit: Duration) -> Result<Sandbox> {
-        let cgroup: Cgroup = resource.try_into()?;
-        let cpu_time_limit = time_limit;
-        // TODO: need real usage to decide
-        let wall_time_limit = Duration::max(time_limit * 2, time_limit + Duration::from_secs(2));
-
-        Ok(Sandbox {
-            cgroup,
-            cpu_time_limit,
-            wall_time_limit,
-        })
-    }
-
     pub fn run(&self, child: Child) -> Result<Metrics> {
         let pid = CgroupPid::from(child.id() as u64);
         self.cgroup.add_task_by_tgid(pid)?;
