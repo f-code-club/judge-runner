@@ -1,27 +1,25 @@
 use std::time::Duration;
 
-use bon::Builder;
 use byte_unit::Byte;
 use cgroups_rs::fs::{Cgroup, cgroup_builder::CgroupBuilder, hierarchies};
 use uuid::Uuid;
 
 const PREFIX: &str = "judge";
 
-#[derive(Clone, Copy, Builder)]
+#[derive(Clone, Copy)]
 pub struct Resource {
-    #[builder(default = Byte::GIGABYTE)]
     pub memory: Byte,
-
-    #[builder(default = Duration::from_millis(100))]
     pub cpu_quota: Duration,
-
-    #[builder(default = Duration::from_millis(100))]
     pub cpu_period: Duration,
 }
 
 impl Default for Resource {
     fn default() -> Self {
-        Resource::builder().build()
+        Resource {
+            memory: Byte::GIGABYTE,
+            cpu_quota: Duration::from_millis(100),
+            cpu_period: Duration::from_millis(100),
+        }
     }
 }
 
