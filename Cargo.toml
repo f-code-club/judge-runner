@@ -11,3 +11,10 @@ A code runner library for online judge system
 """
 
 [dependencies]
+anyhow = "1.0.100"
+bon = "3.8.1"
+byte-unit = "5.2.0"
+cgroups-rs = "0.5.0"
+nix = { version = "0.30.1", default-features = false, features = ["signal"] }
+uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }
+wait-timeout = "0.2.1"
