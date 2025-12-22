@@ -1,140 +1,89 @@
+mod cgroup;
 mod resource;
 
 use std::{
-    os::unix::process::ExitStatusExt,
-    process::{Child, ExitStatus},
+    process::Child,
+    thread::sleep,
     time::{Duration, Instant},
 };
 
 use anyhow::Result;
-use bon::Builder;
-use cgroups_rs::{
-    CgroupPid,
-    fs::{
-        Cgroup,
-        cpu::CpuController,
-        memory::{MemController, Memory},
-    },
-};
-use nix::sys::signal::Signal;
+use cgroups_rs::{CgroupPid, fs::Cgroup};
 pub use resource::Resource;
 
-use crate::Metrics;
+use crate::{Verdict, sandbox::cgroup::CgroupExt};
 
-const CPU_USAGE_PREFIX: &str = "usage_usec ";
+// TODO: need further tuning
+const POLL: Duration = Duration::from_millis(10);
+const MIN_CPU_TIME_PER_POLL: Duration = Duration::from_millis(1);
+const IDLE_TIME_LIMIT: Duration = Duration::from_millis(100);
 
-#[derive(Builder)]
 pub struct Sandbox {
-    #[builder(start_fn)]
-    pub cpu_time_limit: Duration,
-
-    #[builder(start_fn)]
-    pub poll: Duration,
-
-    // TODO: need further testing
-    #[builder(field = Duration::max(cpu_time_limit * 2, cpu_time_limit + Duration::from_secs(2)))]
-    pub wall_time_limit: Duration,
-
-    // TODO: need further testing
-    #[builder(field = poll / 10)]
-    pub min_cpu_time_per_poll: Duration,
-
-    // TODO: need further testing
-    #[builder(field = wall_time_limit / 3)]
-    pub idle_time_limit: Duration,
-
-    #[builder(with = |resource: Resource| -> Result<_> { Cgroup::try_from(resource) })]
     pub cgroup: Cgroup,
+    pub cpu_time_limit: Duration,
+    pub wall_time_limit: Duration,
 }
 
 impl Sandbox {
-    fn get_cpu_time(&self) -> Duration {
-        // SAFETY: there must be cpu controller for cgroup v2
-        let cpu_controller: &CpuController = self.cgroup.controller_of().unwrap();
-        let stats = cpu_controller.cpu().stat;
-
-        // SAFETY: there must be cpu usage for valid cgroup
-        let usage = stats
-            .lines()
-            .find_map(|line| line.strip_suffix(CPU_USAGE_PREFIX))
-            .unwrap();
-        // SAFETY: cpu usage must be duration in microsecond
-        let usage = usage.parse().unwrap();
-        Duration::from_micros(usage)
+    pub fn new(resource: Resource, time_limit: Duration) -> Result<Sandbox> {
+        Ok(Sandbox {
+            cgroup: resource.try_into()?,
+            cpu_time_limit: time_limit,
+            wall_time_limit: Duration::max(time_limit * 2, time_limit + Duration::from_secs(2)),
+        })
     }
 
-    fn try_wait(&self, child: &mut Child) -> Result<Option<Metrics>> {
-        let Some(status) = child.try_wait()? else {
-            return Ok(None);
-        };
-        if status.success() {
-            // temporarily return AC
-            return Ok(Some(Metrics::Accepted));
-        }
-
-        // SAFETY: there must be memory controller for cgroup v2
-        let cpu_controller: &MemController = self.cgroup.controller_of().unwrap();
-        let stats = cpu_controller.memory_stat();
-        if stats.oom_control.oom_kill > 0 {
-            return Ok(Some(Metrics::MemoryLimitExceeded));
-        }
-
-        // SAFETY: process must be terminated with valid signal
-        let metrics = match status.signal().map(|raw| Signal::try_from(raw).unwrap()) {
-            Some(Signal::SIGKILL) => {
-                if stats.usage_in_bytes as i64 > stats.limit_in_bytes {
-                    Metrics::MemoryLimitExceeded
-                } else {
-                    Metrics::RuntimeError
-                }
-            }
-            _ => Metrics::RuntimeError,
-        };
-        Ok(Some(metrics))
-    }
-
-    fn is_idle(
-        &self,
-        cpu_time: Duration,
-        prev_cpu_time: Duration,
-        idle_start: &mut Option<Instant>,
-    ) -> bool {
-        if cpu_time.abs_diff(prev_cpu_time) >= self.min_cpu_time_per_poll {
-            *idle_start = None;
-            return false;
-        }
-        match idle_start {
-            Some(idle_start) => idle_start.elapsed() >= self.idle_time_limit,
-            None => {
-                *idle_start = Some(Instant::now());
-                false
-            }
-        }
-    }
-
-    pub fn run(&self, mut child: Child) -> Result<Metrics> {
-        let pid = CgroupPid::from(child.id() as u64);
-        self.cgroup.add_task_by_tgid(pid)?;
+    pub fn monitor(self, mut child: Child) -> Result<Verdict> {
+        self.cgroup
+            .add_task_by_tgid(CgroupPid::from(child.id() as u64))?;
 
         let start = Instant::now();
-        let mut prev_cpu_time = self.get_cpu_time();
+        let mut prev_cpu_time = self.cgroup.get_cpu_time();
         let mut idle_start: Option<Instant> = None;
+        while child.try_wait()?.is_none() {
+            let cpu_time = self.cgroup.get_cpu_time();
 
-        loop {
-            if let Some(metrics) = self.try_wait(&mut child)? {
-                return Ok(metrics);
-            }
-            let cpu_time = self.get_cpu_time();
-
-            if self.is_idle(cpu_time, prev_cpu_time, &mut idle_start) {
-                return Ok(Metrics::IdleTimeLimitExceeded);
+            if cpu_time.abs_diff(prev_cpu_time) <= MIN_CPU_TIME_PER_POLL {
+                match idle_start {
+                    Some(idle_start) => {
+                        if idle_start.elapsed() >= IDLE_TIME_LIMIT {
+                            return Ok(Verdict::IdleTimeLimitExceeded);
+                        }
+                    }
+                    None => idle_start = Some(Instant::now()),
+                }
+            } else {
+                idle_start = None;
             }
 
             if cpu_time >= self.cpu_time_limit || start.elapsed() >= self.wall_time_limit {
-                return Ok(Metrics::TimeLimitExceeded);
+                return Ok(Verdict::TimeLimitExceeded);
             }
 
             prev_cpu_time = cpu_time;
+
+            sleep(POLL);
         }
+
+        // SAFETY: child must be finished at this point to exit the previous loop
+        let status = child.try_wait()?.unwrap();
+        if status.success() {
+            // temporarily return AC
+            return Ok(Verdict::Accepted);
+        }
+        if self.cgroup.is_out_of_memory() {
+            return Ok(Verdict::MemoryLimitExceeded);
+        }
+        Ok(Verdict::RuntimeError)
+    }
+}
+
+impl Drop for Sandbox {
+    fn drop(&mut self) {
+        // SAFETY: always be used with stable version of linux kernel
+        self.cgroup.kill().unwrap();
+
+        // SAFETY: no descendant is created previously by judge
+        self.cgroup.delete().unwrap();
     }
 }
