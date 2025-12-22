@@ -1,8 +1,8 @@
 pub mod language;
 mod sandbox;
-mod metrics;
+mod verdict;
 
-pub use metrics::Metrics;
+pub use verdict::Verdict;
 
 #[cfg(test)]
 mod test {

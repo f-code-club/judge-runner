@@ -1,4 +1,4 @@
-pub enum Metrics {
+pub enum Verdict {
     Accepted,
     WrongAnswer,
     TimeLimitExceeded,
