@@ -584,6 +584,7 @@ dependencies = [
  "bon",
  "byte-unit",
  "cgroups-rs",
+ "nix 0.30.1",
  "uuid",
  "wait-timeout",
 ]
