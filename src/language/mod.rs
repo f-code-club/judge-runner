@@ -5,11 +5,6 @@ mod python;
 mod rust;
 mod typescript;
 
-use std::collections::HashMap;
-
-use anyhow::Result;
-use strfmt::Format;
-
 pub use cpp::CPP;
 pub use java::JAVA;
 pub use javascript::JAVASCRIPT;
@@ -18,39 +13,66 @@ pub use rust::RUST;
 pub use typescript::TYPESCRIPT;
 
 pub struct Language<'a> {
-    compile_args: Option<&'a [&'a str]>,
-    run_args: &'a [&'a str],
+    pub checker_compile_args: Option<&'a [&'a str]>,
+    pub checker_run_args: &'a [&'a str],
+
+    pub submission_compile_args: Option<&'a [&'a str]>,
+    pub submission_run_args: &'a [&'a str],
+
     pub extension: &'a str,
 }
 
-impl Language<'_> {
-    #[inline]
-    pub const fn new<'a>(
-        compile_args: Option<&'a [&'a str]>,
-        run_args: &'a [&'a str],
-        extension: &'a str,
-    ) -> Language<'a> {
+#[macro_export]
+macro_rules! language {
+    ([ $( $r:expr ),* $(,)? ], $e:expr) => {{
+        let checker_run_args: &[&str] = &[
+            $(
+                const_format::str_replace!($r, "{main}", "checker")
+            ),*
+        ];
+        let submission_run_args: &[&str] = &[
+            $(
+                const_format::str_replace!($r, "{main}", "main")
+            ),*
+        ];
+
         Language {
-            compile_args,
-            run_args,
-            extension,
+            checker_compile_args: None,
+            checker_run_args,
+            submission_compile_args: None,
+            submission_run_args,
+            extension: $e,
         }
-    }
+    }};
 
-    pub fn compile_args(&self, main: &str) -> Option<Result<Vec<String>>> {
-        self.compile_args.map(|raw| format(raw, main))
-    }
+    ([ $( $c:expr ),* $(,)? ], [ $( $r:expr ),* $(,)? ], $e:expr) => {{
+        let checker_compile_args: &[&str] = &[
+            $(
+                const_format::str_replace!($c, "{main}", "checker")
+            ),*
+        ];
+        let checker_run_args: &[&str] = &[
+            $(
+                const_format::str_replace!($r, "{main}", "checker")
+            ),*
+        ];
+        let submission_compile_args: &[&str] = &[
+            $(
+                const_format::str_replace!($c, "{main}", "main")
+            ),*
+        ];
+        let submission_run_args: &[&str] = &[
+            $(
+                const_format::str_replace!($r, "{main}", "main")
+            ),*
+        ];
 
-    pub fn run_args(&self, main: &str) -> Result<Vec<String>> {
-        format(self.run_args, main)
-    }
-}
-
-fn format(args: &[&str], main: &str) -> Result<Vec<String>> {
-    const MAIN: &str = "main";
-    let vars = HashMap::from_iter([(MAIN.to_string(), main)]);
-
-    args.iter()
-        .map(|&x| x.format(&vars).map_err(anyhow::Error::from))
-        .collect()
+        Language {
+            checker_compile_args: Some(checker_compile_args),
+            checker_run_args,
+            submission_compile_args: Some(submission_compile_args),
+            submission_run_args,
+            extension: $e,
+        }
+    }};
 }

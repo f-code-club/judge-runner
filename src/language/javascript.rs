@@ -1,3 +1,3 @@
-use super::Language;
+use crate::{Language, language};
 
-pub const JAVASCRIPT: Language = Language::new(None, &["bun", "run", "{main}.js"], "js");
+pub const JAVASCRIPT: Language = language!(["bun", "run", "{main}.js"], "js");

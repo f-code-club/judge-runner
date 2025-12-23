@@ -1,3 +1,3 @@
-use super::Language;
+use crate::{Language, language};
 
-pub const PYTHON: Language = Language::new(None, &["python", "{main}.py"], "py");
+pub const PYTHON: Language = language!(["python", "{main}.py"], "py");

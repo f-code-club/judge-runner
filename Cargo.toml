@@ -14,5 +14,6 @@ A code runner library for online judge system
 anyhow = "1.0.100"
 byte-unit = "5.2.0"
 cgroups-rs = "0.5.0"
-strfmt = "0.2.5"
+const_format = "0.2.35"
+state-shift = "2.1.1"
 uuid = { version = "1.19.0", features = ["v4", "fast-rng"] }

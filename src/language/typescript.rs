@@ -1,3 +1,3 @@
-use super::Language;
+use crate::{Language, language};
 
-pub const TYPESCRIPT: Language = Language::new(None, &["bun", "run", "{main}.ts"], "ts");
+pub const TYPESCRIPT: Language = language!(["bun", "run", "{main}.ts"], "ts");

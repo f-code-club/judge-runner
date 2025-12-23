@@ -1,4 +1,3 @@
-use super::Language;
+use crate::{Language, language};
 
-pub const JAVA: Language =
-    Language::new(Some(&["javac", "{main}.java"]), &["java", "{main}"], "java");
+pub const JAVA: Language = language!(["javac", "{main}.java"], ["java", "{main}"], "java");
