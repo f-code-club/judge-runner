@@ -20,6 +20,7 @@ pub use typescript::TYPESCRIPT;
 pub struct Language<'a> {
     compile_args: Option<&'a [&'a str]>,
     run_args: &'a [&'a str],
+    pub extension: &'a str,
 }
 
 impl Language<'_> {
@@ -27,10 +28,12 @@ impl Language<'_> {
     pub const fn new<'a>(
         compile_args: Option<&'a [&'a str]>,
         run_args: &'a [&'a str],
+        extension: &'a str,
     ) -> Language<'a> {
         Language {
             compile_args,
             run_args,
+            extension,
         }
     }
 
