@@ -1,6 +1,3 @@
 use super::Language;
 
-pub const TYPESCRIPT: Language = Language {
-    compile_args: None,
-    run_args: &["bun", "run", "main.ts"],
-};
+pub const TYPESCRIPT: Language = Language::new(None, &["bun", "run", "{main}.ts"]);
