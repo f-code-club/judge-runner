@@ -1,3 +1,7 @@
-use crate::{Language, language};
+use crate::Language;
 
-pub const JAVA: Language = language!(["javac", "{main}.java"], ["java", "{main}"], "java");
+pub const JAVA: Language = Language {
+    compile_args: Some("javac {main}.java"),
+    run_args: "java {main}",
+    extension: "java",
+};

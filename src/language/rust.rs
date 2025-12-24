@@ -1,3 +1,7 @@
-use crate::{Language, language};
+use crate::Language;
 
-pub const RUST: Language = language!(["rustc", "-O", "{main}.rs"], ["./{main}"], "rs");
+pub const RUST: Language = Language {
+    compile_args: Some("rustc -O {main}.rs"),
+    run_args: "./{main}",
+    extension: "rs",
+};

@@ -1,3 +1,7 @@
-use crate::{Language, language};
+use crate::Language;
 
-pub const TYPESCRIPT: Language = language!(["bun", "run", "{main}.ts"], "ts");
+pub const TYPESCRIPT: Language = Language {
+    compile_args: None,
+    run_args: "bun run {main}.ts",
+    extension: "ts",
+};
