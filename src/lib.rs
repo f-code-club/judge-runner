@@ -1,4 +1,5 @@
 pub mod checker;
+pub mod judge;
 pub mod language;
 mod sandbox;
 mod verdict;
