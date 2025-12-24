@@ -14,6 +14,7 @@ pub use python::PYTHON;
 pub use rust::RUST;
 pub use typescript::TYPESCRIPT;
 
+#[derive(Clone, Copy)]
 pub struct Language {
     pub compile_args: Option<&'static str>,
     pub run_args: &'static str,
