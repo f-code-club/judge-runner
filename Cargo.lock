@@ -504,6 +504,7 @@ version = "0.1.0"
 dependencies = [
  "byte-unit",
  "cgroups-rs",
+ "nix 0.30.1",
  "state-shift",
  "uuid",
 ]
