@@ -18,7 +18,7 @@ pub fn compile(code: &[u8], language: Language) -> Result<Vec<u8>> {
         .with_extension(language.extension);
     fs::write(&main, code)?;
 
-    let mut process = command.spawn()?;
+    let mut process = command.current_dir(&project_path).spawn()?;
     let _ = process.wait()?;
     let binary = fs::read(main.with_extension(""))?;
 
