@@ -2,12 +2,12 @@ mod cgroup;
 mod resource;
 
 use std::{
+    io,
     process::Child,
     thread::sleep,
     time::{Duration, Instant},
 };
 
-use anyhow::Result;
 use cgroups_rs::{CgroupPid, fs::Cgroup};
 pub use resource::Resource;
 
@@ -25,7 +25,7 @@ pub struct Sandbox {
 }
 
 impl Sandbox {
-    pub fn new(resource: Resource, time_limit: Duration) -> Result<Sandbox> {
+    pub fn new(resource: Resource, time_limit: Duration) -> io::Result<Sandbox> {
         Ok(Sandbox {
             cgroup: resource.try_into()?,
             cpu_time_limit: time_limit,
@@ -33,9 +33,10 @@ impl Sandbox {
         })
     }
 
-    pub fn monitor(self, mut child: Child) -> Result<Verdict> {
+    pub fn monitor(self, mut child: Child) -> io::Result<Verdict> {
         self.cgroup
-            .add_task_by_tgid(CgroupPid::from(child.id() as u64))?;
+            .add_task_by_tgid(CgroupPid::from(child.id() as u64))
+            .map_err(io::Error::other)?;
 
         let start = Instant::now();
         let mut prev_cpu_time = self.cgroup.get_cpu_time();

@@ -1,13 +1,12 @@
-use std::{env, fs};
+use std::{env, fs, io};
 
-use anyhow::Result;
 use uuid::Uuid;
 
 use crate::Language;
 
 const MAIN: &str = "checker";
 
-pub fn compile(code: &[u8], language: Language) -> Result<Vec<u8>> {
+pub fn compile(code: &[u8], language: Language) -> io::Result<Vec<u8>> {
     let Some(mut command) = language.get_compile_command(MAIN) else {
         return Ok(code.to_vec());
     };
@@ -20,7 +19,5 @@ pub fn compile(code: &[u8], language: Language) -> Result<Vec<u8>> {
 
     let mut process = command.current_dir(&project_path).spawn()?;
     let _ = process.wait()?;
-    let binary = fs::read(main.with_extension(""))?;
-
-    Ok(binary)
+    fs::read(main.with_extension(""))
 }

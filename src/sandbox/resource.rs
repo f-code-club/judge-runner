@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{io, time::Duration};
 
 use byte_unit::Byte;
 use cgroups_rs::fs::{Cgroup, cgroup_builder::CgroupBuilder, hierarchies};
@@ -24,7 +24,7 @@ impl Default for Resource {
 }
 
 impl TryFrom<Resource> for Cgroup {
-    type Error = anyhow::Error;
+    type Error = io::Error;
 
     fn try_from(resource: Resource) -> Result<Self, Self::Error> {
         let builder = CgroupBuilder::new(&format!("{}/{}", PREFIX, Uuid::new_v4()));
@@ -41,7 +41,9 @@ impl TryFrom<Resource> for Cgroup {
         let period = resource.cpu_period.as_micros() as u64;
         let builder = builder.cpu().quota(quota).period(period).done();
 
-        let cgroup = builder.build(hierarchies::auto())?;
+        let cgroup = builder
+            .build(hierarchies::auto())
+            .map_err(io::Error::other)?;
         Ok(cgroup)
     }
 }
