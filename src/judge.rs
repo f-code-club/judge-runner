@@ -75,7 +75,8 @@ impl Judge {
 
         let sandbox = Sandbox::new(resource, time_limit)?;
 
-        self.language
+        let mut checker = self
+            .language
             .get_run_command(CHECKER)
             .current_dir(&self.project_path)
             .stdin(
@@ -104,6 +105,17 @@ impl Judge {
                     .open(&submission_to_checker)?,
             )
             .spawn()?;
-        sandbox.monitor(submission)
+        if let Some(verdict) = sandbox.monitor(submission)? {
+            return Ok(verdict);
+        }
+
+        let status = checker.wait()?;
+        let verdict = if status.success() {
+            Verdict::Accepted
+        } else {
+            Verdict::WrongAnswer
+        };
+
+        Ok(verdict)
     }
 }
