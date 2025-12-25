@@ -3,14 +3,14 @@ mod resource;
 
 use std::{
     io,
-    os::unix::process::CommandExt,
+    os::unix::process::{CommandExt, ExitStatusExt},
     process::{Child, Command},
     thread::sleep,
     time::{Duration, Instant},
 };
 
 use cgroups_rs::{CgroupPid, fs::Cgroup};
-use nix::libc::getpid;
+use nix::{libc::getpid, sys::signal::Signal};
 pub use resource::Resource;
 
 use crate::{Verdict, sandbox::cgroup::CgroupExt};
@@ -87,13 +87,12 @@ impl Sandbox {
         // SAFETY: child must be finished at this point to exit the previous loop
         let status = child.try_wait()?.unwrap();
         if status.success() {
-            // temporarily return AC
             return Ok(None);
         }
-        if self.cgroup.is_out_of_memory() {
-            return Ok(Some(Verdict::MemoryLimitExceeded));
+        match status.signal().and_then(|x| Signal::try_from(x).ok()) {
+            Some(Signal::SIGKILL) => Ok(Some(Verdict::MemoryLimitExceeded)),
+            _ => Ok(Some(Verdict::RuntimeError)),
         }
-        Ok(Some(Verdict::RuntimeError))
     }
 }
 
