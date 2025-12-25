@@ -36,7 +36,7 @@ impl Sandbox {
     }
 
     pub fn spawn(&self, mut command: Command) -> io::Result<Child> {
-        let cgroup = self.cgroup.clone().clone();
+        let cgroup = self.cgroup.clone();
 
         unsafe {
             command
