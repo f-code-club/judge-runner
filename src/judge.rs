@@ -18,19 +18,28 @@ const BUFFER_SIZE: usize = 512;
 
 pub struct Judge {
     pub project_path: PathBuf,
-    pub language: Language,
+    pub submission_language: Language,
+    pub checker_language: Language,
 }
 
 impl Judge {
-    pub fn new(code: &[u8], checker: &[u8], language: Language) -> io::Result<Judge> {
+    pub fn new(
+        submission: &[u8],
+        submission_language: Language,
+        checker: &[u8],
+        checker_language: Language,
+    ) -> io::Result<Judge> {
         let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path)?;
         let main_path = project_path
             .join(SUBMISSION)
-            .with_extension(language.extension);
-        let checker_path = project_path.join(CHECKER);
+            .with_extension(submission_language.extension);
+        let mut checker_path = project_path.join(CHECKER);
+        if checker_language.is_interpreted() {
+            checker_path.set_extension(checker_language.extension);
+        }
 
-        fs::write(&main_path, code)?;
+        fs::write(&main_path, submission)?;
         let mut checker_file = fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -41,12 +50,13 @@ impl Judge {
 
         Ok(Judge {
             project_path,
-            language,
+            submission_language,
+            checker_language,
         })
     }
 
     pub fn compile(&self) -> io::Result<Option<Verdict>> {
-        let Some(mut command) = self.language.get_compile_command(SUBMISSION) else {
+        let Some(mut command) = self.submission_language.get_compile_command(SUBMISSION) else {
             return Ok(None);
         };
         let mut process = command.current_dir(&self.project_path).spawn()?;
@@ -66,7 +76,7 @@ impl Judge {
         time_limit: Duration,
     ) -> io::Result<Verdict> {
         let mut checker = self
-            .language
+            .checker_language
             .get_run_command(CHECKER)
             .current_dir(&self.project_path)
             .stdin(Stdio::piped())
@@ -76,12 +86,12 @@ impl Judge {
         let cout = checker.stdout.take().unwrap();
 
         let sandbox = Sandbox::new(resource, time_limit)?;
-        let mut submimission_command = self.language.get_run_command(SUBMISSION);
-        submimission_command
+        let mut submission_command = self.submission_language.get_run_command(SUBMISSION);
+        submission_command
             .current_dir(&self.project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped());
-        let mut submission = sandbox.spawn(submimission_command)?;
+        let mut submission = sandbox.spawn(submission_command)?;
         let mut sin = submission.stdin.take().unwrap();
         let sout = submission.stdout.take().unwrap();
 

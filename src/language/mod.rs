@@ -45,4 +45,7 @@ impl Language {
 
         command
     }
+    pub fn is_interpreted(&self) -> bool {
+        self.compile_args.is_none()
+    }
 }
