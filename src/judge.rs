@@ -1,14 +1,20 @@
-use std::{env, fs, io, path::PathBuf, time::Duration};
+use std::{
+    env, fs,
+    io::{self, Read, Write},
+    os::unix::fs::OpenOptionsExt,
+    path::PathBuf,
+    process::Stdio,
+    thread,
+    time::Duration,
+};
 
-use nix::{sys::stat, unistd};
 use uuid::Uuid;
 
 use crate::{Language, Resource, Sandbox, Verdict};
 
 const SUBMISSION: &str = "main";
 const CHECKER: &str = "checker";
-const INPUT: &str = "input";
-const OUTPUT: &str = "output";
+const BUFFER_SIZE: usize = 512;
 
 pub struct Judge {
     pub project_path: PathBuf,
@@ -25,7 +31,13 @@ impl Judge {
         let checker_path = project_path.join(CHECKER);
 
         fs::write(&main_path, code)?;
-        fs::write(&checker_path, checker)?;
+        let mut checker_file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o755)
+            .open(&checker_path)?;
+        checker_file.write_all(checker)?;
 
         Ok(Judge {
             project_path,
@@ -33,7 +45,7 @@ impl Judge {
         })
     }
 
-    pub fn compile(self) -> io::Result<Option<Verdict>> {
+    pub fn compile(&self) -> io::Result<Option<Verdict>> {
         let Some(mut command) = self.language.get_compile_command(SUBMISSION) else {
             return Ok(None);
         };
@@ -53,49 +65,44 @@ impl Judge {
         resource: Resource,
         time_limit: Duration,
     ) -> io::Result<Verdict> {
-        let checker_to_submission = self.project_path.join(INPUT);
-        unistd::mkfifo(&checker_to_submission, stat::Mode::S_IRWXU)?;
-        if !is_interactive {
-            fs::write(&checker_to_submission, input)?;
-        }
-
-        let submission_to_checker = self.project_path.join(OUTPUT);
-        unistd::mkfifo(&submission_to_checker, stat::Mode::S_IRWXU)?;
-        fs::write(&submission_to_checker, input)?;
-
-        let sandbox = Sandbox::new(resource, time_limit)?;
-
         let mut checker = self
             .language
             .get_run_command(CHECKER)
             .current_dir(&self.project_path)
-            .stdin(
-                fs::OpenOptions::new()
-                    .read(true)
-                    .open(&submission_to_checker)?,
-            )
-            .stdout(
-                fs::OpenOptions::new()
-                    .write(true)
-                    .open(&checker_to_submission)?,
-            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
             .spawn()?;
-        let submission = self
+        let mut cin = checker.stdin.take().unwrap();
+        let cout = checker.stdout.take().unwrap();
+
+        let mut submission = self
             .language
             .get_run_command(SUBMISSION)
             .current_dir(&self.project_path)
-            .stdin(
-                fs::OpenOptions::new()
-                    .read(true)
-                    .open(&checker_to_submission)?,
-            )
-            .stdout(
-                fs::OpenOptions::new()
-                    .write(true)
-                    .open(&submission_to_checker)?,
-            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
             .spawn()?;
-        if let Some(verdict) = sandbox.monitor(submission)? {
+        let mut sin = submission.stdin.take().unwrap();
+        let sout = submission.stdout.take().unwrap();
+
+        let monitor_thread = thread::spawn(move || {
+            let sandbox = Sandbox::new(resource, time_limit)?;
+            sandbox.monitor(submission)
+        });
+
+        if !is_interactive {
+            sin.write_all(input)?;
+            sin.write_all(b"\n")?;
+            sin.flush()?;
+        }
+        cin.write_all(input)?;
+        cin.write_all(b"\n")?;
+        cin.flush()?;
+
+        forward(cout, sin);
+        forward(sout, cin);
+
+        if let Some(verdict) = monitor_thread.join().unwrap()? {
             return Ok(verdict);
         }
 
@@ -108,4 +115,24 @@ impl Judge {
 
         Ok(verdict)
     }
+}
+
+fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
+    mut reader: R,
+    mut writer: W,
+) -> thread::JoinHandle<io::Result<()>> {
+    thread::spawn(move || {
+        let mut buffer = [0u8; BUFFER_SIZE];
+        loop {
+            let n = reader.read(&mut buffer)?;
+            if n == 0 {
+                drop(writer);
+                break;
+            }
+            writer.write_all(&buffer[..n])?;
+            writer.flush()?;
+        }
+
+        Ok(())
+    })
 }
