@@ -3,12 +3,14 @@ mod resource;
 
 use std::{
     io,
-    process::Child,
+    os::unix::process::CommandExt,
+    process::{Child, Command},
     thread::sleep,
     time::{Duration, Instant},
 };
 
 use cgroups_rs::{CgroupPid, fs::Cgroup};
+use nix::libc::getpid;
 pub use resource::Resource;
 
 use crate::{Verdict, sandbox::cgroup::CgroupExt};
@@ -31,6 +33,22 @@ impl Sandbox {
             cpu_time_limit: time_limit,
             wall_time_limit: Duration::max(time_limit * 2, time_limit + Duration::from_secs(2)),
         })
+    }
+
+    pub fn spawn(&self, mut command: Command) -> io::Result<Child> {
+        let cgroup = self.cgroup.clone().clone();
+
+        unsafe {
+            command
+                .pre_exec(move || {
+                    let id = getpid();
+
+                    cgroup
+                        .add_task_by_tgid(CgroupPid::from(id as u64))
+                        .map_err(io::Error::other)
+                })
+                .spawn()
+        }
     }
 
     pub fn monitor(self, mut child: Child) -> io::Result<Option<Verdict>> {
@@ -82,9 +100,9 @@ impl Sandbox {
 impl Drop for Sandbox {
     fn drop(&mut self) {
         // SAFETY: always be used with stable version of linux kernel
-        self.cgroup.kill().unwrap();
+        let _ = self.cgroup.kill();
 
         // SAFETY: no descendant is created previously by judge
-        self.cgroup.delete().unwrap();
+        let _ = self.cgroup.delete();
     }
 }

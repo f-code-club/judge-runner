@@ -75,20 +75,17 @@ impl Judge {
         let mut cin = checker.stdin.take().unwrap();
         let cout = checker.stdout.take().unwrap();
 
-        let mut submission = self
-            .language
-            .get_run_command(SUBMISSION)
+        let sandbox = Sandbox::new(resource, time_limit)?;
+        let mut submimission_command = self.language.get_run_command(SUBMISSION);
+        submimission_command
             .current_dir(&self.project_path)
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
+            .stdout(Stdio::piped());
+        let mut submission = sandbox.spawn(submimission_command)?;
         let mut sin = submission.stdin.take().unwrap();
         let sout = submission.stdout.take().unwrap();
 
-        let monitor_thread = thread::spawn(move || {
-            let sandbox = Sandbox::new(resource, time_limit)?;
-            sandbox.monitor(submission)
-        });
+        let monitor_thread = thread::spawn(move || sandbox.monitor(submission));
 
         if !is_interactive {
             sin.write_all(input)?;
