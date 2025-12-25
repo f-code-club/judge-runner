@@ -29,6 +29,6 @@ impl CgroupExt for Cgroup {
         let memory_controller: &MemController = self.controller_of().unwrap();
         let stats = memory_controller.memory_stat();
 
-        stats.oom_control.oom_kill > 0 && stats.usage_in_bytes as i64 > stats.limit_in_bytes
+        stats.oom_control.oom_kill > 0 || stats.usage_in_bytes as i64 > stats.limit_in_bytes
     }
 }
