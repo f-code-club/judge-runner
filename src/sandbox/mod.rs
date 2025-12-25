@@ -33,7 +33,7 @@ impl Sandbox {
         })
     }
 
-    pub fn monitor(self, mut child: Child) -> io::Result<Verdict> {
+    pub fn monitor(self, mut child: Child) -> io::Result<Option<Verdict>> {
         self.cgroup
             .add_task_by_tgid(CgroupPid::from(child.id() as u64))
             .map_err(io::Error::other)?;
@@ -48,7 +48,7 @@ impl Sandbox {
                 match idle_start {
                     Some(idle_start) => {
                         if idle_start.elapsed() >= IDLE_TIME_LIMIT {
-                            return Ok(Verdict::IdleTimeLimitExceeded);
+                            return Ok(Some(Verdict::IdleTimeLimitExceeded));
                         }
                     }
                     None => idle_start = Some(Instant::now()),
@@ -58,7 +58,7 @@ impl Sandbox {
             }
 
             if cpu_time >= self.cpu_time_limit || start.elapsed() >= self.wall_time_limit {
-                return Ok(Verdict::TimeLimitExceeded);
+                return Ok(Some(Verdict::TimeLimitExceeded));
             }
 
             prev_cpu_time = cpu_time;
@@ -70,12 +70,12 @@ impl Sandbox {
         let status = child.try_wait()?.unwrap();
         if status.success() {
             // temporarily return AC
-            return Ok(Verdict::Accepted);
+            return Ok(None);
         }
         if self.cgroup.is_out_of_memory() {
-            return Ok(Verdict::MemoryLimitExceeded);
+            return Ok(Some(Verdict::MemoryLimitExceeded));
         }
-        Ok(Verdict::RuntimeError)
+        Ok(Some(Verdict::RuntimeError))
     }
 }
 
