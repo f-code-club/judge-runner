@@ -18,7 +18,7 @@ const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
 
 #[type_state(
-    states = (Builder),
+    states = (Builder, Created, Compiled),
     slots = (Builder)
 )]
 #[derive(Default)]
@@ -77,6 +77,24 @@ impl Judge {
             language: self.language,
             checker_language: self.checker_language,
         })
+    }
+
+    #[require(Created)]
+    #[switch_to(Compiled)]
+    pub fn compile(self) -> io::Result<Result<Judge, Verdict>> {
+        if let Some(mut cmd) = self.language.get_compile_command(MAIN) {
+            let mut process = cmd.current_dir(&self.project_path).spawn()?;
+            let status = process.wait()?;
+            if !status.success() {
+                return Ok(Err(Verdict::CompilationError));
+            }
+        }
+
+        Ok(Ok(Judge {
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: self.checker_language,
+        }))
     }
 }
 
