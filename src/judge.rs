@@ -146,7 +146,7 @@ impl Judge {
     }
 
     #[require(Compiled)]
-    pub fn read_binary(&self) -> io::Result<Vec<u8>> {
+    pub fn read_executable(&self) -> io::Result<Vec<u8>> {
         let mut path = self.project_path.join(MAIN);
         if self.language.is_interpreted() {
             path.set_extension(self.language.extension);
