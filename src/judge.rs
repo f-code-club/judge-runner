@@ -144,6 +144,16 @@ impl Judge {
             time_limit: self.time_limit,
         }))
     }
+
+    #[require(Compiled)]
+    pub fn read_binary(&self) -> io::Result<Vec<u8>> {
+        let mut path = self.project_path.join(MAIN);
+        if self.language.is_interpreted() {
+            path.set_extension(self.language.extension);
+        }
+
+        fs::read(path)
+    }
 }
 
 fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
