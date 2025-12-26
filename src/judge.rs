@@ -8,119 +8,75 @@ use std::{
     time::Duration,
 };
 
+use state_shift::{impl_state, type_state};
 use uuid::Uuid;
 
 use crate::{Language, Resource, Sandbox, Verdict};
 
-const SUBMISSION: &str = "main";
+const MAIN: &str = "main";
 const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
 
+#[type_state(
+    states = (Builder),
+    slots = (Builder)
+)]
+#[derive(Default)]
 pub struct Judge {
     pub project_path: PathBuf,
-    pub submission_language: Language,
-    pub checker_language: Language,
+    pub language: Language,
+    pub checker_language: Option<Language>,
 }
 
+#[impl_state]
 impl Judge {
-    pub fn new(
-        submission: &[u8],
-        submission_language: Language,
-        checker: &[u8],
-        checker_language: Language,
-    ) -> io::Result<Judge> {
+    #[require(Builder)]
+    pub fn new() -> io::Result<Judge> {
         let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path)?;
-        let main_path = project_path
-            .join(SUBMISSION)
-            .with_extension(submission_language.extension);
-        let mut checker_path = project_path.join(CHECKER);
-        if checker_language.is_interpreted() {
-            checker_path.set_extension(checker_language.extension);
-        }
 
-        fs::write(&main_path, submission)?;
-        let mut checker_file = fs::OpenOptions::new()
+        Ok(Judge {
+            project_path,
+            language: Default::default(),
+            checker_language: Default::default(),
+        })
+    }
+
+    #[require(Builder)]
+    pub fn with_checker(self, code: &[u8], language: Language) -> io::Result<Judge> {
+        let mut path = self.project_path.join(CHECKER);
+        if language.is_interpreted() {
+            path.set_extension(language.extension);
+        }
+        let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .mode(0o755)
-            .open(&checker_path)?;
-        checker_file.write_all(checker)?;
+            .open(&path)?;
+        file.write_all(code)?;
 
         Ok(Judge {
-            project_path,
-            submission_language,
-            checker_language,
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: Some(language),
         })
     }
 
-    pub fn compile(&self) -> io::Result<Option<Verdict>> {
-        let Some(mut command) = self.submission_language.get_compile_command(SUBMISSION) else {
-            return Ok(None);
-        };
-        let mut process = command.current_dir(&self.project_path).spawn()?;
-        let status = process.wait()?;
-        if !status.success() {
-            return Ok(Some(Verdict::CompilationError));
-        }
+    #[require(Builder)]
+    #[switch_to(Created)]
+    pub fn with_main(self, code: &[u8], language: Language) -> io::Result<Judge> {
+        let main_path = self
+            .project_path
+            .join(MAIN)
+            .with_extension(language.extension);
+        fs::write(&main_path, code)?;
 
-        Ok(None)
-    }
-
-    pub fn run(
-        self,
-        input: &[u8],
-        is_interactive: bool,
-        resource: Resource,
-        time_limit: Duration,
-    ) -> io::Result<Verdict> {
-        let mut checker = self
-            .checker_language
-            .get_run_command(CHECKER)
-            .current_dir(&self.project_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-        let mut cin = checker.stdin.take().unwrap();
-        let cout = checker.stdout.take().unwrap();
-
-        let sandbox = Sandbox::new(resource, time_limit)?;
-        let mut submission_command = self.submission_language.get_run_command(SUBMISSION);
-        submission_command
-            .current_dir(&self.project_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped());
-        let mut submission = sandbox.spawn(submission_command)?;
-        let mut sin = submission.stdin.take().unwrap();
-        let sout = submission.stdout.take().unwrap();
-
-        let monitor_thread = thread::spawn(move || sandbox.monitor(submission));
-
-        if !is_interactive {
-            sin.write_all(input)?;
-            sin.write_all(b"\n")?;
-            sin.flush()?;
-        }
-        cin.write_all(input)?;
-        cin.write_all(b"\n")?;
-        cin.flush()?;
-
-        forward(cout, sin);
-        forward(sout, cin);
-
-        if let Some(verdict) = monitor_thread.join().unwrap()? {
-            return Ok(verdict);
-        }
-
-        let status = checker.wait()?;
-        let verdict = if status.success() {
-            Verdict::Accepted
-        } else {
-            Verdict::WrongAnswer
-        };
-
-        Ok(verdict)
+        Ok(Judge {
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: self.checker_language,
+        })
     }
 }
 
