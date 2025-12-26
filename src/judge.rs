@@ -24,8 +24,13 @@ const BUFFER_SIZE: usize = 512;
 #[derive(Default)]
 pub struct Judge {
     pub project_path: PathBuf,
+
     pub language: Language,
     pub checker_language: Option<Language>,
+
+    pub is_interactive: bool,
+    pub resource: Resource,
+    pub time_limit: Duration,
 }
 
 #[impl_state]
@@ -39,9 +44,44 @@ impl Judge {
             project_path,
             language: Default::default(),
             checker_language: Default::default(),
+            is_interactive: false,
+            resource: Default::default(),
+            time_limit: Duration::from_secs(1),
         })
     }
-
+    #[require(Builder)]
+    pub fn interactive(self) -> Judge {
+        Judge {
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: self.checker_language,
+            is_interactive: true,
+            resource: self.resource,
+            time_limit: self.time_limit,
+        }
+    }
+    #[require(Builder)]
+    pub fn with_resource(self, resource: Resource) -> Judge {
+        Judge {
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: self.checker_language,
+            is_interactive: self.is_interactive,
+            resource,
+            time_limit: self.time_limit,
+        }
+    }
+    #[require(Builder)]
+    pub fn with_time_limit(self, time_limit: Duration) -> Judge {
+        Judge {
+            project_path: self.project_path,
+            language: self.language,
+            checker_language: self.checker_language,
+            is_interactive: self.is_interactive,
+            resource: self.resource,
+            time_limit,
+        }
+    }
     #[require(Builder)]
     pub fn with_checker(self, code: &[u8], language: Language) -> io::Result<Judge> {
         let mut path = self.project_path.join(CHECKER);
@@ -60,9 +100,11 @@ impl Judge {
             project_path: self.project_path,
             language: self.language,
             checker_language: Some(language),
+            is_interactive: self.is_interactive,
+            resource: self.resource,
+            time_limit: self.time_limit,
         })
     }
-
     #[require(Builder)]
     #[switch_to(Created)]
     pub fn with_main(self, code: &[u8], language: Language) -> io::Result<Judge> {
@@ -76,6 +118,9 @@ impl Judge {
             project_path: self.project_path,
             language: self.language,
             checker_language: self.checker_language,
+            is_interactive: self.is_interactive,
+            resource: self.resource,
+            time_limit: self.time_limit,
         })
     }
 
@@ -94,6 +139,9 @@ impl Judge {
             project_path: self.project_path,
             language: self.language,
             checker_language: self.checker_language,
+            is_interactive: self.is_interactive,
+            resource: self.resource,
+            time_limit: self.time_limit,
         }))
     }
 }
