@@ -1,4 +1,3 @@
-pub mod checker;
 mod judge;
 pub mod language;
 mod sandbox;

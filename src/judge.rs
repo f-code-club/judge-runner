@@ -18,115 +18,55 @@ const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
 
 #[type_state(
-    states = (Builder, Created, Compiled),
-    slots = (Builder)
+    states = (Created, Compiled),
+    slots = (Created)
 )]
 #[derive(Default)]
 pub struct Judge {
     pub project_path: PathBuf,
-
     pub language: Language,
     pub checker_language: Option<Language>,
-
-    pub is_interactive: bool,
-    pub resource: Resource,
-    pub time_limit: Duration,
 }
 
 #[impl_state]
 impl Judge {
-    #[require(Builder)]
-    pub fn new() -> io::Result<Judge> {
+    #[require(Created)]
+    pub fn new(main: (&[u8], Language), checker: Option<(&[u8], Language)>) -> io::Result<Judge> {
         let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path)?;
 
-        Ok(Judge {
-            project_path,
-            language: Default::default(),
-            checker_language: Default::default(),
-            is_interactive: false,
-            resource: Default::default(),
-            time_limit: Duration::from_secs(1),
-        })
-    }
-    #[require(Builder)]
-    pub fn interactive(self) -> Judge {
-        Judge {
-            project_path: self.project_path,
-            language: self.language,
-            checker_language: self.checker_language,
-            is_interactive: true,
-            resource: self.resource,
-            time_limit: self.time_limit,
-        }
-    }
-    #[require(Builder)]
-    pub fn with_resource(self, resource: Resource) -> Judge {
-        Judge {
-            project_path: self.project_path,
-            language: self.language,
-            checker_language: self.checker_language,
-            is_interactive: self.is_interactive,
-            resource,
-            time_limit: self.time_limit,
-        }
-    }
-    #[require(Builder)]
-    pub fn with_time_limit(self, time_limit: Duration) -> Judge {
-        Judge {
-            project_path: self.project_path,
-            language: self.language,
-            checker_language: self.checker_language,
-            is_interactive: self.is_interactive,
-            resource: self.resource,
-            time_limit,
-        }
-    }
-    #[require(Builder)]
-    pub fn with_checker(self, code: &[u8], language: Language) -> io::Result<Judge> {
-        let mut path = self.project_path.join(CHECKER);
-        if language.is_interpreted() {
-            path.set_extension(language.extension);
-        }
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o755)
-            .open(&path)?;
-        file.write_all(code)?;
-
-        Ok(Judge {
-            project_path: self.project_path,
-            language: self.language,
-            checker_language: Some(language),
-            is_interactive: self.is_interactive,
-            resource: self.resource,
-            time_limit: self.time_limit,
-        })
-    }
-    #[require(Builder)]
-    #[switch_to(Created)]
-    pub fn with_main(self, code: &[u8], language: Language) -> io::Result<Judge> {
-        let main_path = self
-            .project_path
-            .join(MAIN)
-            .with_extension(language.extension);
+        let (code, language) = main;
+        let main_path = project_path.join(MAIN).with_extension(language.extension);
         fs::write(&main_path, code)?;
 
+        let checker_language = if let Some((code, language)) = checker {
+            let mut checker_path = project_path.join(CHECKER);
+            if language.is_interpreted() {
+                checker_path.set_extension(language.extension);
+            }
+            let mut checker_file = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .mode(0o755)
+                .open(&checker_path)?;
+            checker_file.write_all(code)?;
+
+            Some(language)
+        } else {
+            None
+        };
+
         Ok(Judge {
-            project_path: self.project_path,
-            language: self.language,
-            checker_language: self.checker_language,
-            is_interactive: self.is_interactive,
-            resource: self.resource,
-            time_limit: self.time_limit,
+            project_path,
+            language,
+            checker_language,
         })
     }
 
     #[require(Created)]
     #[switch_to(Compiled)]
-    pub fn compile(self) -> io::Result<Result<Judge, Verdict>> {
+    pub fn compile(self) -> io::Result<Result<Judge<Compiled>, Verdict>> {
         if let Some(mut cmd) = self.language.get_compile_command(MAIN) {
             let mut process = cmd.current_dir(&self.project_path).spawn()?;
             let status = process.wait()?;
@@ -139,9 +79,6 @@ impl Judge {
             project_path: self.project_path,
             language: self.language,
             checker_language: self.checker_language,
-            is_interactive: self.is_interactive,
-            resource: self.resource,
-            time_limit: self.time_limit,
         }))
     }
 
@@ -153,6 +90,69 @@ impl Judge {
         }
 
         fs::read(path)
+    }
+
+    #[require(Compiled)]
+    pub fn run(
+        self,
+        input: &[u8],
+        is_interactive: bool,
+        resource: Resource,
+        time_limit: Duration,
+    ) -> io::Result<Verdict> {
+        let Judge {
+            project_path,
+            language,
+            checker_language,
+            ..
+        } = self;
+
+        let checker_language = checker_language.ok_or(io::Error::other("Missing checker"))?;
+        let mut checker = checker_language
+            .get_run_command(CHECKER)
+            .current_dir(&project_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?;
+        let mut cin = checker.stdin.take().unwrap();
+        let cout = checker.stdout.take().unwrap();
+
+        let sandbox = Sandbox::new(resource, time_limit)?;
+        let mut submission_command = language.get_run_command(MAIN);
+        submission_command
+            .current_dir(&project_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped());
+        let mut submission = sandbox.spawn(submission_command)?;
+        let mut sin = submission.stdin.take().unwrap();
+        let sout = submission.stdout.take().unwrap();
+
+        let monitor_thread = thread::spawn(move || sandbox.monitor(submission));
+
+        if !is_interactive {
+            sin.write_all(input)?;
+            sin.write_all(b"\n")?;
+            sin.flush()?;
+        }
+        cin.write_all(input)?;
+        cin.write_all(b"\n")?;
+        cin.flush()?;
+
+        forward(cout, sin);
+        forward(sout, cin);
+
+        if let Some(verdict) = monitor_thread.join().unwrap()? {
+            return Ok(verdict);
+        }
+
+        let status = checker.wait()?;
+        let verdict = if status.success() {
+            Verdict::Accepted
+        } else {
+            Verdict::WrongAnswer
+        };
+
+        Ok(verdict)
     }
 }
 
