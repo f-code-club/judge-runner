@@ -28,21 +28,27 @@ pub struct Judge {
     pub checker_language: Option<Language>,
 }
 
+pub struct Code<'a> {
+    pub content: &'a [u8],
+    pub language: Language,
+}
+
 #[impl_state]
 impl Judge {
     #[require(Created)]
-    pub fn new(main: (&[u8], Language), checker: Option<(&[u8], Language)>) -> io::Result<Judge> {
+    pub fn new(main: Code<'_>, checker: Option<Code<'_>>) -> io::Result<Judge> {
         let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path)?;
 
-        let (code, language) = main;
-        let main_path = project_path.join(MAIN).with_extension(language.extension);
-        fs::write(&main_path, code)?;
+        let main_path = project_path
+            .join(MAIN)
+            .with_extension(main.language.extension);
+        fs::write(&main_path, main.content)?;
 
-        let checker_language = if let Some((code, language)) = checker {
+        let checker_language = if let Some(checker) = checker {
             let mut checker_path = project_path.join(CHECKER);
-            if language.is_interpreted() {
-                checker_path.set_extension(language.extension);
+            if checker.language.is_interpreted() {
+                checker_path.set_extension(checker.language.extension);
             }
             let mut checker_file = fs::OpenOptions::new()
                 .create(true)
@@ -50,16 +56,16 @@ impl Judge {
                 .truncate(true)
                 .mode(0o755)
                 .open(&checker_path)?;
-            checker_file.write_all(code)?;
+            checker_file.write_all(checker.content)?;
 
-            Some(language)
+            Some(checker.language)
         } else {
             None
         };
 
         Ok(Judge {
             project_path,
-            language,
+            language: main.language,
             checker_language,
         })
     }
