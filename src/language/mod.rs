@@ -26,7 +26,6 @@ impl Language {
         let args = self.compile_args?;
         let args = args.replace("{main}", main);
         let mut args = args.split_whitespace();
-        // SAFETY: there is always at least 1 element
         let binary = args.next().unwrap();
 
         let mut command = Command::new(binary);
@@ -37,7 +36,6 @@ impl Language {
     pub fn get_run_command(&self, main: &str) -> Command {
         let args = self.run_args.replace("{main}", main);
         let mut args = args.split_whitespace();
-        // SAFETY: there is always at least 1 element
         let binary = args.next().unwrap();
 
         let mut command = Command::new(binary);
