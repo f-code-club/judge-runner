@@ -207,13 +207,15 @@ fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
         loop {
             let n = reader.read(&mut buffer)?;
             if n == 0 {
-                drop(writer);
+                break;
+            }
+            if writer.write_all(&buffer[..n]).is_err() {
                 break;
             }
             stdout.extend_from_slice(&buffer[0..n]);
-            writer.write_all(&buffer[..n])?;
             writer.flush()?;
         }
+        drop(writer);
 
         Ok(stdout)
     })
