@@ -13,10 +13,11 @@ pub enum Verdict {
     IdleTimeLimitExceeded,
 }
 
+#[derive(Debug)]
 pub struct Metrics {
     pub verdict: Verdict,
     pub run_time: Duration,
+    pub memory_usage: Byte,
     pub stdout: String,
     pub stderr: String,
-    pub memory: Byte,
 }
