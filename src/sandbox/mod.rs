@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use byte_unit::Byte;
 use cgroups_rs::{CgroupPid, fs::Cgroup};
 use nix::{libc::getpid, sys::signal::Signal};
 pub use resource::Resource;
@@ -51,22 +52,29 @@ impl Sandbox {
         }
     }
 
-    pub fn monitor(self, mut child: Child) -> io::Result<Option<Verdict>> {
+    pub fn monitor(&self, mut child: Child) -> io::Result<(Option<Verdict>, Duration, Byte)> {
         self.cgroup
             .add_task_by_tgid(CgroupPid::from(child.id() as u64))
             .map_err(io::Error::other)?;
 
         let start = Instant::now();
+        let mut memory_usage = Byte::default();
         let mut prev_cpu_time = self.cgroup.get_cpu_time();
         let mut idle_start: Option<Instant> = None;
+
         while child.try_wait()?.is_none() {
             let cpu_time = self.cgroup.get_cpu_time();
+            memory_usage = memory_usage.max(self.cgroup.get_memory_usage());
 
             if cpu_time.abs_diff(prev_cpu_time) <= MIN_CPU_TIME_PER_POLL {
                 match idle_start {
                     Some(idle_start) => {
                         if idle_start.elapsed() >= IDLE_TIME_LIMIT {
-                            return Ok(Some(Verdict::IdleTimeLimitExceeded));
+                            return Ok((
+                                Some(Verdict::IdleTimeLimitExceeded),
+                                cpu_time,
+                                memory_usage,
+                            ));
                         }
                     }
                     None => idle_start = Some(Instant::now()),
@@ -76,7 +84,11 @@ impl Sandbox {
             }
 
             if cpu_time >= self.cpu_time_limit || start.elapsed() >= self.wall_time_limit {
-                return Ok(Some(Verdict::TimeLimitExceeded));
+                return Ok((
+                    Some(Verdict::TimeLimitExceeded),
+                    self.cpu_time_limit,
+                    memory_usage,
+                ));
             }
 
             prev_cpu_time = cpu_time;
@@ -87,11 +99,15 @@ impl Sandbox {
         // SAFETY: child must be finished at this point to exit the previous loop
         let status = child.try_wait()?.unwrap();
         if status.success() {
-            return Ok(None);
+            return Ok((None, prev_cpu_time, memory_usage));
         }
         match status.signal().and_then(|x| Signal::try_from(x).ok()) {
-            Some(Signal::SIGKILL) => Ok(Some(Verdict::MemoryLimitExceeded)),
-            _ => Ok(Some(Verdict::RuntimeError)),
+            Some(Signal::SIGKILL) => Ok((
+                Some(Verdict::MemoryLimitExceeded),
+                prev_cpu_time,
+                self.cgroup.get_memory_limit(),
+            )),
+            _ => Ok((Some(Verdict::RuntimeError), prev_cpu_time, memory_usage)),
         }
     }
 }
