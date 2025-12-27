@@ -1,12 +1,12 @@
 mod judge;
 pub mod language;
 mod sandbox;
-mod verdict;
+mod metrics;
 
 pub use judge::*;
 pub use language::Language;
 pub use sandbox::*;
-pub use verdict::*;
+pub use metrics::*;
 
 #[cfg(test)]
 mod test {
