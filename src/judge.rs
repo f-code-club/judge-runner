@@ -1,6 +1,7 @@
 use std::{
     env, fs,
     io::{self, Read, Write},
+    marker::PhantomData,
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     process::Stdio,
@@ -8,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use bon::bon;
 use state_shift::{impl_state, type_state};
 use uuid::Uuid;
 
@@ -28,27 +30,29 @@ pub struct Judge {
     pub checker_language: Option<Language>,
 }
 
-pub struct Code<'a> {
-    pub content: &'a [u8],
-    pub language: Language,
-}
+#[bon]
+impl Judge<Created> {
+    #[builder]
+    pub fn new<'a>(
+        #[rustfmt::skip]
+        #[builder(with = |code: &'a [u8], language: Language| (code, language))]
+        main: (&'a [u8], Language),
 
-#[impl_state]
-impl Judge {
-    #[require(Created)]
-    pub fn new(main: Code<'_>, checker: Option<Code<'_>>) -> io::Result<Judge> {
+        #[rustfmt::skip]
+        #[builder(with = |code: &'a [u8], language: Language| (code, language))]
+        checker: Option<(&'a [u8], Language)>,
+    ) -> io::Result<Judge<Created>> {
         let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path)?;
 
-        let main_path = project_path
-            .join(MAIN)
-            .with_extension(main.language.extension);
-        fs::write(&main_path, main.content)?;
+        let (code, language) = main;
+        let main_path = project_path.join(MAIN).with_extension(language.extension);
+        fs::write(&main_path, code)?;
 
-        let checker_language = if let Some(checker) = checker {
+        let checker_language = if let Some((code, language)) = checker {
             let mut checker_path = project_path.join(CHECKER);
-            if checker.language.is_interpreted() {
-                checker_path.set_extension(checker.language.extension);
+            if language.is_interpreted() {
+                checker_path.set_extension(language.extension);
             }
             let mut checker_file = fs::OpenOptions::new()
                 .create(true)
@@ -56,20 +60,24 @@ impl Judge {
                 .truncate(true)
                 .mode(0o755)
                 .open(&checker_path)?;
-            checker_file.write_all(checker.content)?;
+            checker_file.write_all(code)?;
 
-            Some(checker.language)
+            Some(language)
         } else {
             None
         };
 
         Ok(Judge {
             project_path,
-            language: main.language,
+            language,
             checker_language,
+            _state: PhantomData,
         })
     }
+}
 
+#[impl_state]
+impl Judge {
     #[require(Created)]
     #[switch_to(Compiled)]
     pub fn compile(self) -> io::Result<Result<Judge<Compiled>, Verdict>> {
