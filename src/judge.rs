@@ -13,7 +13,7 @@ use bon::bon;
 use state_shift::{impl_state, type_state};
 use uuid::Uuid;
 
-use crate::{Language, Resource, Sandbox, Verdict};
+use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 
 const MAIN: &str = "main";
 const CHECKER: &str = "checker";
@@ -113,7 +113,7 @@ impl Judge {
         is_interactive: bool,
         resource: Resource,
         time_limit: Duration,
-    ) -> io::Result<Verdict> {
+    ) -> io::Result<Metrics> {
         let Judge {
             project_path,
             language,
@@ -127,36 +127,57 @@ impl Judge {
             .current_dir(&project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()?;
-        let mut cin = checker.stdin.take().unwrap();
-        let cout = checker.stdout.take().unwrap();
+        let mut cstdin = checker.stdin.take().unwrap();
+        let cstdout = checker.stdout.take().unwrap();
 
         let sandbox = Sandbox::new(resource, time_limit)?;
-        let mut submission_command = language.get_run_command(MAIN);
-        submission_command
-            .current_dir(&project_path)
+        let mut cmd = language.get_run_command(MAIN);
+        cmd.current_dir(&project_path)
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped());
-        let mut submission = sandbox.spawn(submission_command)?;
-        let mut sin = submission.stdin.take().unwrap();
-        let sout = submission.stdout.take().unwrap();
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut main = sandbox.spawn(cmd)?;
+        let mut stdin = main.stdin.take().unwrap();
+        let stdout = main.stdout.take().unwrap();
+        let mut stderr = main.stderr.take().unwrap();
 
-        let monitor_thread = thread::spawn(move || sandbox.monitor(submission));
+        let ((verdict, run_time, memory_usage), stdout) = thread::scope(|scope| {
+            let monitor_thread = scope.spawn(|| sandbox.monitor(main));
 
-        if !is_interactive {
-            sin.write_all(input)?;
-            sin.write_all(b"\n")?;
-            sin.flush()?;
-        }
-        cin.write_all(input)?;
-        cin.write_all(b"\n")?;
-        cin.flush()?;
+            if !is_interactive {
+                stdin.write_all(input)?;
+                stdin.write_all(b"\n")?;
+                stdin.flush()?;
+            }
+            cstdin.write_all(input)?;
+            cstdin.write_all(b"\n")?;
+            cstdin.flush()?;
 
-        forward(cout, sin);
-        forward(sout, cin);
+            forward(cstdout, stdin);
+            let main_to_checker = forward(stdout, cstdin);
 
-        if let Some(verdict) = monitor_thread.join().unwrap()? {
-            return Ok(verdict);
+            let monitor_result = match monitor_thread.join().unwrap() {
+                Ok(v) => v,
+                Err(err) => return Err(err),
+            };
+            let output = main_to_checker.join().unwrap()?;
+            let output = String::from_utf8(output).map_err(io::Error::other)?;
+
+            Ok((monitor_result, output))
+        })?;
+        let mut err = String::new();
+        stderr.read_to_string(&mut err)?;
+
+        if let Some(verdict) = verdict {
+            return Ok(Metrics {
+                verdict,
+                run_time,
+                stdout,
+                stderr: err,
+                memory_usage,
+            });
         }
 
         let status = checker.wait()?;
@@ -166,15 +187,22 @@ impl Judge {
             Verdict::WrongAnswer
         };
 
-        Ok(verdict)
+        Ok(Metrics {
+            verdict,
+            run_time,
+            stdout,
+            stderr: err,
+            memory_usage,
+        })
     }
 }
 
 fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
     mut reader: R,
     mut writer: W,
-) -> thread::JoinHandle<io::Result<()>> {
+) -> thread::JoinHandle<io::Result<Vec<u8>>> {
     thread::spawn(move || {
+        let mut stdout: Vec<u8> = vec![];
         let mut buffer = [0u8; BUFFER_SIZE];
         loop {
             let n = reader.read(&mut buffer)?;
@@ -182,10 +210,11 @@ fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
                 drop(writer);
                 break;
             }
+            stdout.extend_from_slice(&buffer[0..n]);
             writer.write_all(&buffer[..n])?;
             writer.flush()?;
         }
 
-        Ok(())
+        Ok(stdout)
     })
 }
