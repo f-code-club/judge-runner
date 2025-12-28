@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 
-const MAIN: &str = "main";
-const CHECKER: &str = "checker";
+const MAIN: &str = "Main";
+const CHECKER: &str = "Checker";
 const BUFFER_SIZE: usize = 512;
 
 #[type_state(
