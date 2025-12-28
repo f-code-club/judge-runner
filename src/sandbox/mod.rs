@@ -4,6 +4,7 @@ mod resource;
 use std::{
     io,
     os::unix::process::{CommandExt, ExitStatusExt},
+    process,
     process::{Child, Command},
     thread::sleep,
     time::{Duration, Instant},
@@ -14,7 +15,6 @@ use cgroups_rs::{
     CgroupPid,
     fs::{Cgroup, cpu::CpuController, memory::MemController},
 };
-use nix::{libc::getpid, sys::signal::Signal};
 pub use resource::Resource;
 
 use crate::{
@@ -48,7 +48,7 @@ impl Sandbox {
         unsafe {
             command
                 .pre_exec(move || {
-                    let id = getpid();
+                    let id = process::id();
 
                     cgroup
                         .add_task_by_tgid(CgroupPid::from(id as u64))
@@ -114,8 +114,9 @@ impl Sandbox {
         if status.success() {
             return Ok((None, prev_cpu_usage, memory_usage));
         }
-        match status.signal().and_then(|x| Signal::try_from(x).ok()) {
-            Some(Signal::SIGKILL) => Ok((
+        match status.signal() {
+            // SIGKILL
+            Some(9) => Ok((
                 Some(Verdict::MemoryLimitExceeded),
                 prev_cpu_usage,
                 memory.limit(),
