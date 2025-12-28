@@ -5,7 +5,7 @@ mod python;
 mod rust;
 mod typescript;
 
-use std::process::Command;
+use tokio::process::Command;
 
 pub use cpp::CPP;
 pub use java::JAVA;
