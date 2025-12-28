@@ -3,12 +3,13 @@ mod resource;
 
 use std::{
     io,
-    os::unix::process::{CommandExt, ExitStatusExt},
+    os::unix::process::ExitStatusExt,
     process,
-    process::{Child, Command},
     thread::sleep,
     time::{Duration, Instant},
 };
+
+use tokio::process::{Child, Command};
 
 use byte_unit::Byte;
 use cgroups_rs::{
@@ -58,9 +59,12 @@ impl Sandbox {
         }
     }
 
-    pub fn monitor(&self, mut child: Child) -> io::Result<(Option<Verdict>, Duration, Byte)> {
+    pub async fn monitor(&self, mut child: Child) -> io::Result<(Option<Verdict>, Duration, Byte)> {
+        let Some(id) = child.id() else {
+            return Err(io::Error::other("Child exited"));
+        };
         self.cgroup
-            .add_task_by_tgid(CgroupPid::from(child.id() as u64))
+            .add_task_by_tgid(CgroupPid::from(id as u64))
             .map_err(io::Error::other)?;
         let cpu: &CpuController = self
             .cgroup
