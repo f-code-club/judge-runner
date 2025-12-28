@@ -6,14 +6,19 @@ use judge_runner::{Judge, Resource, language};
 #[tokio::main]
 async fn main() {
     let checker_code = r#"
-import sys
-n = int(input())
-res = int(input())
+#include<bits/stdc++.h>
 
-if n == res:
-    sys.exit(0)
-else:
-    sys.exit(1)
+using namespace std;
+
+int main() {
+    string s, res;
+    cin >> s >> res;
+    if (s == res) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
     "#;
     let code = r#"
 #include<bits/stdc++.h>
@@ -21,14 +26,14 @@ else:
 using namespace std;
 
 int main() {
-    int n;
-    cin >> n;
-    cout << n << endl;
+    string s;
+    cin >> s;
+    cout << s << endl;
 }
 "#;
 
     let checker = Judge::builder()
-        .main(checker_code.as_bytes(), language::PYTHON)
+        .main(checker_code.as_bytes(), language::CPP)
         .build()
         .await
         .unwrap();
@@ -36,7 +41,7 @@ int main() {
     let checker = checker.read_executable().await.unwrap();
 
     let judge = Judge::builder()
-        .checker(&checker, language::PYTHON)
+        .checker(&checker, language::CPP)
         .main(code.as_bytes(), language::CPP)
         .build()
         .await
