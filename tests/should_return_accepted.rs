@@ -8,7 +8,7 @@ use judge_runner::{Judge, Language, Resource, Verdict, language::*};
 use rstest::rstest;
 
 #[rstest]
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 pub async fn should_return_accepted(
     #[rustfmt::skip]
     #[values(CPP)]
