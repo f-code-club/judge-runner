@@ -2,7 +2,7 @@ use std::{
     env, fs,
     io::{self, Read, Write},
     marker::PhantomData,
-    os::unix::fs::OpenOptionsExt,
+    os::{fd::AsFd, unix::fs::OpenOptionsExt},
     path::PathBuf,
     process::Stdio,
     thread,
@@ -11,6 +11,7 @@ use std::{
 
 use bon::bon;
 use state_shift::{impl_state, type_state};
+use timeout_readwrite::{TimeoutReadExt, TimeoutReader};
 use uuid::Uuid;
 
 use crate::{Language, Metrics, Resource, Sandbox, Verdict};
@@ -18,6 +19,7 @@ use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 const MAIN: &str = "main";
 const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
+const READ_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[type_state(
     states = (Created, Compiled),
@@ -130,7 +132,7 @@ impl Judge {
             .stderr(Stdio::null())
             .spawn()?;
         let mut cstdin = checker.stdin.take().unwrap();
-        let cstdout = checker.stdout.take().unwrap();
+        let cstdout = checker.stdout.take().unwrap().with_timeout(READ_TIMEOUT);
 
         let sandbox = Sandbox::new(resource, time_limit)?;
         let mut cmd = language.get_run_command(MAIN);
@@ -140,8 +142,8 @@ impl Judge {
             .stderr(Stdio::piped());
         let mut main = sandbox.spawn(cmd)?;
         let mut stdin = main.stdin.take().unwrap();
-        let stdout = main.stdout.take().unwrap();
-        let mut stderr = main.stderr.take().unwrap();
+        let stdout = main.stdout.take().unwrap().with_timeout(READ_TIMEOUT);
+        let mut stderr = main.stderr.take().unwrap().with_timeout(READ_TIMEOUT);
 
         let ((verdict, run_time, memory_usage), stdout) = thread::scope(|scope| {
             let monitor_thread = scope.spawn(|| sandbox.monitor(main));
@@ -155,8 +157,8 @@ impl Judge {
             cstdin.write_all(b"\n")?;
             cstdin.flush()?;
 
-            forward(cstdout, stdin);
-            let main_to_checker = forward(stdout, cstdin);
+            scope.spawn(|| forward(cstdout, stdin));
+            let main_to_checker = scope.spawn(|| forward(stdout, cstdin));
 
             let monitor_result = match monitor_thread.join().unwrap() {
                 Ok(v) => v,
@@ -168,7 +170,8 @@ impl Judge {
             Ok((monitor_result, output))
         })?;
         let mut err = String::new();
-        stderr.read_to_string(&mut err)?;
+        // TODO: handle error
+        let _ = stderr.read_to_string(&mut err);
 
         if let Some(verdict) = verdict {
             return Ok(Metrics {
@@ -197,26 +200,25 @@ impl Judge {
     }
 }
 
-fn forward<R: Read + Send + 'static, W: Write + Send + 'static>(
-    mut reader: R,
+fn forward<R: Read + AsFd, W: Write>(
+    mut reader: TimeoutReader<R>,
     mut writer: W,
-) -> thread::JoinHandle<io::Result<Vec<u8>>> {
-    thread::spawn(move || {
-        let mut stdout: Vec<u8> = vec![];
-        let mut buffer = [0u8; BUFFER_SIZE];
-        loop {
-            let n = reader.read(&mut buffer)?;
-            if n == 0 {
-                break;
-            }
-            if writer.write_all(&buffer[..n]).is_err() {
-                break;
-            }
-            stdout.extend_from_slice(&buffer[0..n]);
-            writer.flush()?;
+) -> io::Result<Vec<u8>> {
+    let mut stdout: Vec<u8> = vec![];
+    let mut buffer = [0u8; BUFFER_SIZE];
+    loop {
+        // TODO:handle error
+        let n = match reader.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        if writer.write_all(&buffer[..n]).is_err() {
+            break;
         }
-        drop(writer);
+        stdout.extend_from_slice(&buffer[0..n]);
+        writer.flush()?;
+    }
+    drop(writer);
 
-        Ok(stdout)
-    })
+    Ok(stdout)
 }
