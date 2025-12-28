@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 
-const MAIN: &str = "Main";
-const CHECKER: &str = "Checker";
+const MAIN: &str = "main";
+const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
 
 #[type_state(
@@ -111,7 +111,7 @@ impl Judge {
 
     #[require(Compiled)]
     pub async fn run(
-        self,
+        &self,
         input: &[u8],
         is_interactive: bool,
         resource: Resource,
@@ -127,7 +127,7 @@ impl Judge {
         let checker_language = checker_language.ok_or(io::Error::other("Missing checker"))?;
         let mut checker = checker_language
             .get_run_command(CHECKER)
-            .current_dir(&project_path)
+            .current_dir(project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -137,7 +137,7 @@ impl Judge {
 
         let sandbox = Sandbox::new(resource, time_limit)?;
         let mut cmd = language.get_run_command(MAIN);
-        cmd.current_dir(&project_path)
+        cmd.current_dir(project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -145,16 +145,16 @@ impl Judge {
         let mut stdin = main.stdin.take().unwrap();
         let mut stdout = main.stdout.take().unwrap();
         let mut stderr = main.stderr.take().unwrap();
+        if !is_interactive {
+            stdin.write_all(input).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await?;
+        }
 
         let monitor = tokio::spawn(async move { sandbox.monitor(main).await });
 
         tokio::try_join! {
             async {
-                if !is_interactive {
-                    stdin.write_all(input).await?;
-                    stdin.write_all(b"\n").await?;
-                    stdin.flush().await?;
-                }
 
                 Ok::<_, io::Error>(())
             },
