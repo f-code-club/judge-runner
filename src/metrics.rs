@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use byte_unit::Byte;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
     Accepted,
     WrongAnswer,
