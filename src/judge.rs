@@ -145,16 +145,16 @@ impl Judge {
         let mut stdin = main.stdin.take().unwrap();
         let mut stdout = main.stdout.take().unwrap();
         let mut stderr = main.stderr.take().unwrap();
-        if !is_interactive {
-            stdin.write_all(input).await?;
-            stdin.write_all(b"\n").await?;
-            stdin.flush().await?;
-        }
 
         let monitor = tokio::spawn(async move { sandbox.monitor(main).await });
 
         tokio::try_join! {
             async {
+                if !is_interactive {
+                    stdin.write_all(input).await?;
+                    stdin.write_all(b"\n").await?;
+                    stdin.flush().await?;
+                }
 
                 Ok::<_, io::Error>(())
             },
