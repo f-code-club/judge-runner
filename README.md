@@ -19,7 +19,8 @@ use std::time::Duration;
 use byte_unit::Byte;
 use judge_runner::{Judge, Resource, language};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let checker_code = r#"
 import sys
 n = int(input())
@@ -31,42 +32,42 @@ else:
     sys.exit(1)
     "#;
     let code = r#"
-        #include<bits/stdc++.h>
-        
-        using namespace std;
+#include<bits/stdc++.h>
 
-        int main() {
-            int n;
-            cin >> n;
-            cout << n << endl;
-        }
-    "#;
+using namespace std;
+
+int main() {
+    int n;
+    cin >> n;
+    cout << n << endl;
+}
+"#;
 
     let checker = Judge::builder()
         .main(checker_code.as_bytes(), language::PYTHON)
         .build()
-        .unwrap()
-        .compile()
-        .unwrap()
-        .unwrap()
-        .read_executable()
+        .await
         .unwrap();
+    let checker = checker.compile().await.unwrap().unwrap();
+    let checker = checker.read_executable().await.unwrap();
 
     let judge = Judge::builder()
         .checker(&checker, language::PYTHON)
         .main(code.as_bytes(), language::CPP)
         .build()
+        .await
         .unwrap();
-    let judge = judge.compile().unwrap().unwrap();
+    let judge = judge.compile().await.unwrap().unwrap();
 
-    let input = rand::random::<i32>().to_string();
+    let input = "4";
     let resource = Resource {
-        memory: Byte::MEGABYTE,
+        memory: Byte::MEBIBYTE.multiply(1030).unwrap(),
         ..Default::default()
     };
     let time_limit = Duration::from_secs(1);
     let verdict = judge
         .run(input.as_bytes(), false, resource, time_limit)
+        .await
         .unwrap();
     println!("{:#?}", verdict);
 }
