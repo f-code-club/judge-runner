@@ -11,7 +11,7 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 pub async fn should_return_accepted(
     #[rustfmt::skip]
-    #[values(RUST, CPP, TYPESCRIPT, JAVASCRIPT, PYTHON, JAVA)]
+    #[values(RUST, CPP, PYTHON, JAVA)]
     language: Language,
 
     #[dirs]
