@@ -11,11 +11,12 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 pub async fn should_return_accepted(
     #[rustfmt::skip]
-    #[values(CPP)]
+    #[values(RUST, CPP, TYPESCRIPT, JAVASCRIPT, PYTHON, JAVA)]
     language: Language,
 
     #[dirs]
-    #[files("tests/problem/*")]
+    #[files("tests/problem/easy/*")]
+    #[exclude("wrong-answer")]
     #[by_ref]
     problem: &Path,
 ) {
@@ -26,11 +27,11 @@ pub async fn should_return_accepted(
         memory: Byte::GIGABYTE,
         ..Default::default()
     };
-    let time_limit = Duration::from_secs(1);
+    let time_limit = Duration::from_secs(5);
 
     let judge = Judge::builder()
         .checker(&checker, CPP)
-        .main(&solution, CPP)
+        .main(&solution, language)
         .build()
         .await
         .unwrap();
@@ -41,6 +42,7 @@ pub async fn should_return_accepted(
             .run(input.as_bytes(), false, resource, time_limit)
             .await
             .unwrap();
+        println!("{:#?}", metrics);
         assert_eq!(metrics.verdict, Verdict::Accepted);
     }
 }
