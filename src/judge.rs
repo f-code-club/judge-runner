@@ -144,8 +144,8 @@ impl Judge {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()?;
-        let mut cstdin = checker.stdin.take()?;
-        let mut cstdout = checker.stdout.take()?;
+        let mut cstdin = checker.stdin.take().unwrap();
+        let mut cstdout = checker.stdout.take().unwrap();
 
         let sandbox = Sandbox::new(resource, time_limit)?;
         let mut cmd = language.get_run_command(MAIN);
@@ -154,9 +154,9 @@ impl Judge {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let mut main = sandbox.spawn(cmd)?;
-        let mut stdin = main.stdin.take()?;
-        let mut stdout = main.stdout.take()?;
-        let mut stderr = main.stderr.take()?;
+        let mut stdin = main.stdin.take().unwrap();
+        let mut stdout = main.stdout.take().unwrap();
+        let mut stderr = main.stderr.take().unwrap();
 
         let monitor = tokio::spawn(async move { sandbox.monitor(main).await });
 
@@ -209,16 +209,20 @@ impl Judge {
                 Ok::<_, io::Error>(())
             } => { err? }
             err = async {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    let n = cstdout.read(&mut buffer).await?;
-                    if n == 0 { break; }
-                    if stdin.write_all(&buffer[..n]).await.is_err() {
-                        break;
+                if !is_interactive {
+                    drop(stdin);
+                } else {
+                    let mut buffer = [0u8; BUFFER_SIZE];
+                    loop {
+                        let n = cstdout.read(&mut buffer).await?;
+                        if n == 0 { break; }
+                        if stdin.write_all(&buffer[..n]).await.is_err() {
+                            break;
+                        }
+                        stdin.flush().await?;
                     }
-                    stdin.flush().await?;
-                }
 
+                }
                 // sleep indefinitely until sandbox return
                 sleep(Duration::MAX).await;
 
