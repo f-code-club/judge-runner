@@ -1,12 +1,4 @@
-use std::{
-    env,
-    hash::{DefaultHasher, Hash, Hasher},
-    io,
-    marker::PhantomData,
-    path::PathBuf,
-    process::Stdio,
-    time::Duration,
-};
+use std::{env, io, marker::PhantomData, path::PathBuf, process::Stdio, time::Duration};
 
 use bon::bon;
 use state_shift::{impl_state, type_state};
@@ -14,9 +6,8 @@ use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWriteExt},
 };
-use uuid::Uuid;
 
-use crate::{Language, Metrics, Resource, Sandbox, Verdict};
+use crate::{Language, Metrics, Resource, Sandbox, Verdict, util};
 
 const MAIN: &str = "main";
 const CHECKER: &str = "checker";
@@ -51,7 +42,7 @@ impl Judge<Created> {
         #[builder(default)] resource: Resource,
         #[builder(default)] time_limit: Duration,
     ) -> io::Result<Judge<Created>> {
-        let project_path = generate_project_path(main.content);
+        let project_path = env::temp_dir().join(util::random(main.content).to_string());
         fs::create_dir(&project_path).await?;
 
         tokio::try_join! {
@@ -214,13 +205,4 @@ impl Judge {
             memory_usage,
         })
     }
-}
-
-fn generate_project_path(content: &[u8]) -> PathBuf {
-    let mut hasher = DefaultHasher::default();
-    content.hash(&mut hasher);
-    Uuid::new_v4().hash(&mut hasher);
-    let id = hasher.finish();
-
-    env::temp_dir().join(id.to_string())
 }

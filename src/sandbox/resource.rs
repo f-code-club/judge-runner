@@ -2,11 +2,12 @@ use std::{io, time::Duration};
 
 use byte_unit::Byte;
 use cgroups_rs::fs::{Cgroup, cgroup_builder::CgroupBuilder, hierarchies};
-use uuid::Uuid;
+
+use crate::util;
 
 const PREFIX: &str = "judge";
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Hash)]
 pub struct Resource {
     pub memory: Byte,
     pub cpu_quota: Duration,
@@ -27,7 +28,7 @@ impl TryFrom<Resource> for Cgroup {
     type Error = io::Error;
 
     fn try_from(resource: Resource) -> Result<Self, Self::Error> {
-        let builder = CgroupBuilder::new(&format!("{}/{}", PREFIX, Uuid::new_v4()));
+        let builder = CgroupBuilder::new(&format!("{}/{}", PREFIX, util::random(resource)));
 
         let memory = resource.memory.as_u64() as i64;
         let builder = builder
