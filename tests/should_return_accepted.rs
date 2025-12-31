@@ -27,7 +27,7 @@ pub async fn should_return_accepted(
         memory: Byte::GIGABYTE,
         ..Default::default()
     };
-    let time_limit = Duration::MAX;
+    let time_limit = Duration::from_mins(10);
 
     let judge = Judge::builder()
         .checker(&checker, CPP)
