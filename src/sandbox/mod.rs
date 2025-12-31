@@ -5,7 +5,7 @@ use std::{io, os::unix::process::ExitStatusExt, process, time::Duration};
 
 use tokio::{
     process::{Child, Command},
-    time::{Instant, sleep},
+    time::{Instant, interval},
 };
 
 use byte_unit::Byte;
@@ -77,6 +77,8 @@ impl Sandbox {
         let mut prev_cpu_usage = cpu.usage();
         let mut idle_start: Option<Instant> = None;
 
+        let mut interval = interval(POLL);
+
         while child.try_wait()?.is_none() {
             let cpu_usage = cpu.usage();
             memory_usage = memory_usage.max(memory.usage());
@@ -108,7 +110,7 @@ impl Sandbox {
 
             prev_cpu_usage = cpu_usage;
 
-            sleep(POLL).await;
+            interval.tick().await;
         }
 
         let status = child.try_wait()?.unwrap();
