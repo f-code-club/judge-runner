@@ -4,12 +4,10 @@ A code runner library for online judge system.
 
 ## Supported Languages
 
-- C++
-- Java
-- JavaScript
-- Python
 - Rust
-- TypeScript
+- C++
+- Python
+- Java
 
 ## Usage
 
