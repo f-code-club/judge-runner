@@ -117,6 +117,10 @@ impl Judge {
         resource: Resource,
         time_limit: Duration,
     ) -> io::Result<Metrics> {
+        self.project_path
+            .read_dir()
+            .unwrap()
+            .for_each(|x| println!("{:?}", x));
         let Judge {
             project_path,
             language,
@@ -131,7 +135,8 @@ impl Judge {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn().unwrap();
+            .spawn()
+            .unwrap();
         let mut cstdin = checker.stdin.take().unwrap();
         let mut cstdout = checker.stdout.take().unwrap();
 
