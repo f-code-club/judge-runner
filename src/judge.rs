@@ -131,17 +131,17 @@ impl Judge {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn()?;
+            .spawn().unwrap();
         let mut cstdin = checker.stdin.take().unwrap();
         let mut cstdout = checker.stdout.take().unwrap();
 
-        let sandbox = Sandbox::new(resource, time_limit)?;
+        let sandbox = Sandbox::new(resource, time_limit).unwrap();
         let mut cmd = language.get_run_command(MAIN);
         cmd.current_dir(project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut main = sandbox.spawn(cmd)?;
+        let mut main = sandbox.spawn(cmd).unwrap();
         let mut stdin = main.stdin.take().unwrap();
         let mut stdout = main.stdout.take().unwrap();
         let mut stderr = main.stderr.take().unwrap();
@@ -174,7 +174,7 @@ impl Judge {
         let mut memory_usage: Byte = Byte::default();
         tokio::select! {
             monitor_result = monitor => {
-                let monitor_result = monitor_result.unwrap()?;
+                let monitor_result = monitor_result.unwrap().unwrap();
                 (verdict, run_time, memory_usage) = monitor_result;
             }
             err = async {
