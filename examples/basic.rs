@@ -1,18 +1,3 @@
-# Judge Runner
-
-A code runner library for online judge system.
-
-## Supported Languages
-
-- Rust
-- C++
-- Python
-- Java
-- ... More language can be defined
-
-## Usage
-
-```rust
 use std::time::Duration;
 
 use byte_unit::Byte;
@@ -81,8 +66,3 @@ int main() {
     let metrics = judge.run(input.as_bytes()).await.unwrap();
     println!("{:#?}", metrics);
 }
-```
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
