@@ -9,12 +9,10 @@ use std::{
 };
 
 use bon::bon;
-use byte_unit::Byte;
 use state_shift::{impl_state, type_state};
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWriteExt},
-    time::sleep,
 };
 use uuid::Uuid;
 
@@ -22,7 +20,7 @@ use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 
 const MAIN: &str = "main";
 const CHECKER: &str = "checker";
-const BUFFER_SIZE: usize = 512;
+const BUFFER_SIZE: usize = 8 * 1024;
 
 pub struct Code<'a> {
     pub language: Language,
@@ -142,6 +140,9 @@ impl Judge {
             .spawn()?;
         let mut cstdin = checker.stdin.take().unwrap();
         let mut cstdout = checker.stdout.take().unwrap();
+        cstdin.write_all(input).await?;
+        cstdin.write_all(b"\n").await?;
+        cstdin.flush().await?;
 
         let sandbox = Sandbox::new(self.resource, self.time_limit)?;
         let mut cmd = self.language.get_run_command(MAIN);
@@ -155,102 +156,51 @@ impl Judge {
         let mut stderr = main.stderr.take().unwrap();
 
         let monitor = tokio::spawn(async move { sandbox.monitor(main).await });
-
-        tokio::try_join! {
-            async {
-                if !self.is_interactive {
-                    stdin.write_all(input).await?;
-                    stdin.write_all(b"\n").await?;
-                    stdin.flush().await?;
+        if !self.is_interactive {
+            stdin.write_all(input).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await?;
+        }
+        let stdin_thread =
+            tokio::spawn(async move { tokio::io::copy(&mut cstdout, &mut stdin).await });
+        let stdout_thread = tokio::spawn(async move {
+            let mut out = vec![];
+            let mut buffer = [0u8; BUFFER_SIZE];
+            loop {
+                let n = stdout.read(&mut buffer).await?;
+                if n == 0 {
+                    break;
                 }
-
-                Ok::<_, io::Error>(())
-            },
-            async {
-                cstdin.write_all(input).await?;
-                cstdin.write_all(b"\n").await?;
+                if cstdin.write_all(&buffer[..n]).await.is_err() {
+                    break;
+                }
                 cstdin.flush().await?;
-
-                Ok::<_, io::Error>(())
+                out.extend_from_slice(&buffer[0..n]);
             }
-        }?;
 
-        let mut out: Vec<u8> = vec![];
-        let mut err: Vec<u8> = vec![];
-        let mut verdict: Option<Verdict> = None;
-        let mut run_time: Duration = Duration::default();
-        let mut memory_usage: Byte = Byte::default();
-        tokio::select! {
-            monitor_result = monitor => {
-                let monitor_result = monitor_result.unwrap()?;
-                (verdict, run_time, memory_usage) = monitor_result;
-            }
-            err = async {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    let n = stdout.read(&mut buffer).await?;
-                    if n == 0 {
-                        break;
-                    }
-                    if cstdin.write_all(&buffer[..n]).await.is_err() {
-                        break;
-                    }
-                    cstdin.flush().await?;
-                    out.extend_from_slice(&buffer[0..n]);
-                }
+            Ok::<_, io::Error>(out)
+        });
 
-                // sleep indefinitely until sandbox return
-                sleep(Duration::MAX).await;
+        let (verdict, run_time, memory_usage) = monitor.await.unwrap()?;
+        let checker_status = checker.wait().await?;
+        drop(checker);
 
-                Ok::<_, io::Error>(())
-            } => { err? }
-            err = async {
-                if !self.is_interactive {
-                    drop(stdin);
-                } else {
-                    let mut buffer = [0u8; BUFFER_SIZE];
-                    loop {
-                        let n = cstdout.read(&mut buffer).await?;
-                        if n == 0 { break; }
-                        if stdin.write_all(&buffer[..n]).await.is_err() {
-                            break;
-                        }
-                        stdin.flush().await?;
-                    }
-
-                }
-                // sleep indefinitely until sandbox return
-                sleep(Duration::MAX).await;
-
-                Ok::<_, io::Error>(())
-            } => { err? }
-            err = async {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    let n = stderr.read(&mut buffer).await?;
-                    if n == 0 { break; }
-                    err.extend_from_slice(&buffer[0..n]);
-                }
-
-                // sleep indefinitely until sandbox return
-                sleep(Duration::MAX).await;
-
-                Ok::<_, io::Error>(())
-            } => { err? }
-        };
+        let _ = stdin_thread.await;
+        let stdout = stdout_thread.await.unwrap()?;
+        let mut err = vec![];
+        stderr.read_to_end(&mut err).await?;
 
         if let Some(verdict) = verdict {
             return Ok(Metrics {
                 verdict,
                 run_time,
-                stdout: out,
+                stdout,
                 stderr: err,
                 memory_usage,
             });
         }
 
-        let status = checker.wait().await?;
-        let verdict = if status.success() {
+        let verdict = if checker_status.success() {
             Verdict::Accepted
         } else {
             Verdict::WrongAnswer
@@ -259,7 +209,7 @@ impl Judge {
         Ok(Metrics {
             verdict,
             run_time,
-            stdout: out,
+            stdout,
             stderr: err,
             memory_usage,
         })
