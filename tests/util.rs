@@ -1,6 +1,6 @@
 use std::{fs, path::Path};
 
-use judge_runner::{Judge, Language};
+use judge_runner::{Code, Judge, Language};
 
 const INPUT: &str = "input";
 const SOLUTION: &str = "solution";
@@ -27,7 +27,10 @@ pub async fn read_checker(problem: &Path, language: Language) -> Vec<u8> {
     .unwrap();
 
     let checker = Judge::builder()
-        .main(&checker, language)
+        .main(Code {
+            content: &checker,
+            language,
+        })
         .build()
         .await
         .unwrap();

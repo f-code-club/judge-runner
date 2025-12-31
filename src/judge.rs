@@ -24,6 +24,11 @@ const MAIN: &str = "main";
 const CHECKER: &str = "checker";
 const BUFFER_SIZE: usize = 512;
 
+pub struct Code<'a> {
+    pub language: Language,
+    pub content: &'a [u8],
+}
+
 #[type_state(
     states = (Created, Compiled),
     slots = (Created)
@@ -33,40 +38,36 @@ pub struct Judge {
     pub project_path: PathBuf,
     pub language: Language,
     pub checker_language: Option<Language>,
+    pub is_interactive: bool,
+    pub resource: Resource,
+    pub time_limit: Duration,
 }
 
 #[bon]
 impl Judge<Created> {
     #[builder]
     pub async fn new<'a>(
-        #[rustfmt::skip]
-        #[builder(with = |code: &'a [u8], language: Language| (code, language))]
-        main: (&'a [u8], Language),
-
-        #[rustfmt::skip]
-        #[builder(with = |code: &'a [u8], language: Language| (code, language))]
-        checker: Option<(&'a [u8], Language)>,
+        main: Code<'a>,
+        checker: Option<Code<'a>>,
+        #[builder(default = false, name = "interactive")] is_interactive: bool,
+        #[builder(default)] resource: Resource,
+        #[builder(default)] time_limit: Duration,
     ) -> io::Result<Judge<Created>> {
-        let mut hasher = DefaultHasher::default();
-        main.0.hash(&mut hasher);
-        Uuid::new_v4().hash(&mut hasher);
-        let id = hasher.finish();
-        let project_path = env::temp_dir().join(id.to_string());
+        let project_path = generate_project_path(main.content);
         fs::create_dir(&project_path).await?;
 
         tokio::try_join! {
             async {
-                let (code, language) = main;
-                let main_path = project_path.join(MAIN).with_extension(language.extension);
-                fs::write(&main_path, code).await?;
+                let main_path = project_path.join(MAIN).with_extension(main.language.extension);
+                fs::write(&main_path, main.content).await?;
 
                 Ok::<_, io::Error>(())
             },
             async {
-                if let Some((code, language)) = checker {
+                if let Some(checker) = &checker {
                     let mut checker_path = project_path.join(CHECKER);
-                    if language.is_interpreted() {
-                        checker_path.set_extension(language.extension);
+                    if checker.language.is_interpreted() {
+                        checker_path.set_extension(checker.language.extension);
                     }
                     let mut checker_file = fs::OpenOptions::new()
                         .create(true)
@@ -75,7 +76,7 @@ impl Judge<Created> {
                         .mode(0o755)
                         .open(&checker_path)
                     .await?;
-                    checker_file.write_all(code).await?;
+                    checker_file.write_all(checker.content).await?;
                 }
 
                 Ok(())
@@ -84,8 +85,11 @@ impl Judge<Created> {
 
         Ok(Judge {
             project_path,
-            language: main.1,
-            checker_language: checker.map(|checker| checker.1),
+            language: main.language,
+            checker_language: checker.map(|checker| checker.language),
+            is_interactive,
+            resource,
+            time_limit,
             _state: PhantomData,
         })
     }
@@ -108,6 +112,9 @@ impl Judge {
             project_path: self.project_path,
             language: self.language,
             checker_language: self.checker_language,
+            is_interactive: self.is_interactive,
+            resource: self.resource,
+            time_limit: self.time_limit,
         }))
     }
 
@@ -122,24 +129,13 @@ impl Judge {
     }
 
     #[require(Compiled)]
-    pub async fn run(
-        &self,
-        input: &[u8],
-        is_interactive: bool,
-        resource: Resource,
-        time_limit: Duration,
-    ) -> io::Result<Metrics> {
-        let Judge {
-            project_path,
-            language,
-            checker_language,
-            ..
-        } = self;
-
-        let checker_language = checker_language.ok_or(io::Error::other("Missing checker"))?;
+    pub async fn run(&self, input: &[u8]) -> io::Result<Metrics> {
+        let checker_language = self
+            .checker_language
+            .ok_or(io::Error::other("Missing checker"))?;
         let mut checker = checker_language
             .get_run_command(CHECKER)
-            .current_dir(project_path)
+            .current_dir(&self.project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -147,9 +143,9 @@ impl Judge {
         let mut cstdin = checker.stdin.take().unwrap();
         let mut cstdout = checker.stdout.take().unwrap();
 
-        let sandbox = Sandbox::new(resource, time_limit)?;
-        let mut cmd = language.get_run_command(MAIN);
-        cmd.current_dir(project_path)
+        let sandbox = Sandbox::new(self.resource, self.time_limit)?;
+        let mut cmd = self.language.get_run_command(MAIN);
+        cmd.current_dir(&self.project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -162,7 +158,7 @@ impl Judge {
 
         tokio::try_join! {
             async {
-                if !is_interactive {
+                if !self.is_interactive {
                     stdin.write_all(input).await?;
                     stdin.write_all(b"\n").await?;
                     stdin.flush().await?;
@@ -209,7 +205,7 @@ impl Judge {
                 Ok::<_, io::Error>(())
             } => { err? }
             err = async {
-                if !is_interactive {
+                if !self.is_interactive {
                     drop(stdin);
                 } else {
                     let mut buffer = [0u8; BUFFER_SIZE];
@@ -268,4 +264,13 @@ impl Judge {
             memory_usage,
         })
     }
+}
+
+fn generate_project_path(content: &[u8]) -> PathBuf {
+    let mut hasher = DefaultHasher::default();
+    content.hash(&mut hasher);
+    Uuid::new_v4().hash(&mut hasher);
+    let id = hasher.finish();
+
+    env::temp_dir().join(id.to_string())
 }

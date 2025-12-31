@@ -4,7 +4,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use byte_unit::Byte;
-use judge_runner::{Judge, Language, Resource, Verdict, language::*};
+use judge_runner::{Code, Judge, Language, Resource, Verdict, language::*};
 use rstest::rstest;
 
 #[rstest]
@@ -23,25 +23,28 @@ pub async fn should_return_accepted(
     let inputs = util::read_inputs(problem);
     let checker = util::read_checker(problem, CPP).await;
     let solution = util::read_solution(problem, language);
-    let resource = Resource {
-        memory: Byte::GIGABYTE,
-        ..Default::default()
-    };
-    let time_limit = Duration::from_mins(10);
 
     let judge = Judge::builder()
-        .checker(&checker, CPP)
-        .main(&solution, language)
+        .checker(Code {
+            content: &checker,
+            language: CPP,
+        })
+        .main(Code {
+            content: &solution,
+            language,
+        })
+        .resource(Resource {
+            memory: Byte::GIGABYTE,
+            ..Default::default()
+        })
+        .time_limit(Duration::from_secs(1))
         .build()
         .await
         .unwrap();
     let judge = judge.compile().await.unwrap().unwrap();
 
     for input in inputs {
-        let metrics = judge
-            .run(input.as_bytes(), false, resource, time_limit)
-            .await
-            .unwrap();
+        let metrics = judge.run(input.as_bytes()).await.unwrap();
         assert_eq!(metrics.verdict, Verdict::Accepted);
     }
 }

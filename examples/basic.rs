@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use byte_unit::Byte;
-use judge_runner::{Judge, Resource, language};
+use judge_runner::{Code, Judge, Resource, language};
 
 #[tokio::main]
 async fn main() {
@@ -33,7 +33,10 @@ int main() {
 "#;
 
     let checker = Judge::builder()
-        .main(checker_code.as_bytes(), language::CPP)
+        .main(Code {
+            content: checker_code.as_bytes(),
+            language: language::CPP,
+        })
         .build()
         .await
         .unwrap();
@@ -41,22 +44,25 @@ int main() {
     let checker = checker.read_executable().await.unwrap();
 
     let judge = Judge::builder()
-        .checker(&checker, language::CPP)
-        .main(code.as_bytes(), language::CPP)
+        .checker(Code {
+            content: &checker,
+            language: language::CPP,
+        })
+        .main(Code {
+            content: code.as_bytes(),
+            language: language::CPP,
+        })
+        .time_limit(Duration::from_secs(1))
+        .resource(Resource {
+            memory: Byte::GIGABYTE,
+            ..Default::default()
+        })
         .build()
         .await
         .unwrap();
     let judge = judge.compile().await.unwrap().unwrap();
 
     let input = "4";
-    let resource = Resource {
-        memory: Byte::MEBIBYTE.multiply(1030).unwrap(),
-        ..Default::default()
-    };
-    let time_limit = Duration::from_secs(1);
-    let verdict = judge
-        .run(input.as_bytes(), false, resource, time_limit)
-        .await
-        .unwrap();
+    let verdict = judge.run(input.as_bytes()).await.unwrap();
     println!("{:#?}", verdict);
 }
