@@ -63,6 +63,6 @@ int main() {
     let judge = judge.compile().await.unwrap().unwrap();
 
     let input = "4";
-    let verdict = judge.run(input.as_bytes()).await.unwrap();
-    println!("{:#?}", verdict);
+    let metrics = judge.run(input.as_bytes()).await.unwrap();
+    println!("{:#?}", metrics);
 }
