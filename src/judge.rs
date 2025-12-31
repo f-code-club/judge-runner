@@ -1,4 +1,12 @@
-use std::{env, io, marker::PhantomData, path::PathBuf, process::Stdio, time::Duration};
+use std::{
+    env,
+    hash::{DefaultHasher, Hash, Hasher},
+    io,
+    marker::PhantomData,
+    path::PathBuf,
+    process::Stdio,
+    time::Duration,
+};
 
 use bon::bon;
 use byte_unit::Byte;
@@ -39,7 +47,11 @@ impl Judge<Created> {
         #[builder(with = |code: &'a [u8], language: Language| (code, language))]
         checker: Option<(&'a [u8], Language)>,
     ) -> io::Result<Judge<Created>> {
-        let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
+        let mut hasher = DefaultHasher::default();
+        main.0.hash(&mut hasher);
+        Uuid::new_v4().hash(&mut hasher);
+        let id = hasher.finish();
+        let project_path = env::temp_dir().join(id.to_string());
         fs::create_dir(&project_path).await?;
 
         tokio::try_join! {
