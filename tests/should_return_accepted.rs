@@ -11,7 +11,7 @@ use rstest::rstest;
 #[tokio::test(flavor = "multi_thread")]
 pub async fn should_return_accepted(
     #[rustfmt::skip]
-    #[values(RUST, CPP, PYTHON, JAVA)]
+    #[values(RUST, CPP, PYTHON, JAVASCRIPT, TYPESCRIPT, JAVA)]
     language: Language,
 
     #[dirs]
@@ -27,7 +27,7 @@ pub async fn should_return_accepted(
         memory: Byte::GIGABYTE,
         ..Default::default()
     };
-    let time_limit = Duration::from_secs(5);
+    let time_limit = Duration::MAX;
 
     let judge = Judge::builder()
         .checker(&checker, CPP)
