@@ -1,15 +1,12 @@
 mod cgroup;
 mod resource;
 
-use std::{
-    io,
-    os::unix::process::ExitStatusExt,
-    process,
-    thread::sleep,
-    time::{Duration, Instant},
-};
+use std::{io, os::unix::process::ExitStatusExt, process, time::Duration};
 
-use tokio::process::{Child, Command};
+use tokio::{
+    process::{Child, Command},
+    time::{Instant, sleep},
+};
 
 use byte_unit::Byte;
 use cgroups_rs::{
@@ -111,7 +108,7 @@ impl Sandbox {
 
             prev_cpu_usage = cpu_usage;
 
-            sleep(POLL);
+            sleep(POLL).await;
         }
 
         let status = child.try_wait()?.unwrap();
