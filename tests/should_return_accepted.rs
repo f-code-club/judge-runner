@@ -42,7 +42,6 @@ pub async fn should_return_accepted(
             .run(input.as_bytes(), false, resource, time_limit)
             .await
             .unwrap();
-        println!("{:#?}", metrics);
         assert_eq!(metrics.verdict, Verdict::Accepted);
     }
 }
