@@ -242,8 +242,6 @@ impl Judge {
                 Ok::<_, io::Error>(())
             } => { err? }
         };
-        let out = String::from_utf8(out).map_err(io::Error::other)?;
-        let err = String::from_utf8(err).map_err(io::Error::other)?;
 
         if let Some(verdict) = verdict {
             return Ok(Metrics {
