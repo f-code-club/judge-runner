@@ -1,18 +1,14 @@
 mod cpp;
 mod java;
-mod javascript;
 mod python;
 mod rust;
-mod typescript;
 
 use tokio::process::Command;
 
 pub use cpp::CPP;
 pub use java::JAVA;
-pub use javascript::JAVASCRIPT;
 pub use python::PYTHON;
 pub use rust::RUST;
-pub use typescript::TYPESCRIPT;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Language {
