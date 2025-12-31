@@ -45,32 +45,25 @@ impl Judge<Created> {
         let project_path = env::temp_dir().join(util::random(main.content).to_string());
         fs::create_dir(&project_path).await?;
 
-        tokio::try_join! {
-            async {
-                let main_path = project_path.join(MAIN).with_extension(main.language.extension);
-                fs::write(&main_path, main.content).await?;
-
-                Ok::<_, io::Error>(())
-            },
-            async {
-                if let Some(checker) = &checker {
-                    let mut checker_path = project_path.join(CHECKER);
-                    if checker.language.is_interpreted() {
-                        checker_path.set_extension(checker.language.extension);
-                    }
-                    let mut checker_file = fs::OpenOptions::new()
-                        .create(true)
-                        .write(true)
-                        .truncate(true)
-                        .mode(0o755)
-                        .open(&checker_path)
-                    .await?;
-                    checker_file.write_all(checker.content).await?;
-                }
-
-                Ok(())
+        let main_path = project_path
+            .join(MAIN)
+            .with_extension(main.language.extension);
+        fs::write(&main_path, main.content).await?;
+        if let Some(checker) = &checker {
+            let mut checker_path = project_path.join(CHECKER);
+            if checker.language.is_interpreted() {
+                checker_path.set_extension(checker.language.extension);
             }
-        }?;
+            let mut checker_file = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .mode(0o755)
+                .open(&checker_path)
+                .await?;
+            checker_file.write_all(checker.content).await?;
+            checker_file.sync_all().await?;
+        }
 
         Ok(Judge {
             project_path,
