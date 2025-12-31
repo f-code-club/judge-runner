@@ -129,10 +129,6 @@ impl Judge {
         resource: Resource,
         time_limit: Duration,
     ) -> io::Result<Metrics> {
-        self.project_path
-            .read_dir()
-            .unwrap()
-            .for_each(|x| println!("{:?}", x));
         let Judge {
             project_path,
             language,
@@ -147,21 +143,20 @@ impl Judge {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let mut cstdin = checker.stdin.take().unwrap();
-        let mut cstdout = checker.stdout.take().unwrap();
+            .spawn()?;
+        let mut cstdin = checker.stdin.take()?;
+        let mut cstdout = checker.stdout.take()?;
 
-        let sandbox = Sandbox::new(resource, time_limit).unwrap();
+        let sandbox = Sandbox::new(resource, time_limit)?;
         let mut cmd = language.get_run_command(MAIN);
         cmd.current_dir(project_path)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut main = sandbox.spawn(cmd).unwrap();
-        let mut stdin = main.stdin.take().unwrap();
-        let mut stdout = main.stdout.take().unwrap();
-        let mut stderr = main.stderr.take().unwrap();
+        let mut main = sandbox.spawn(cmd)?;
+        let mut stdin = main.stdin.take()?;
+        let mut stdout = main.stdout.take()?;
+        let mut stderr = main.stderr.take()?;
 
         let monitor = tokio::spawn(async move { sandbox.monitor(main).await });
 
@@ -191,7 +186,7 @@ impl Judge {
         let mut memory_usage: Byte = Byte::default();
         tokio::select! {
             monitor_result = monitor => {
-                let monitor_result = monitor_result.unwrap().unwrap();
+                let monitor_result = monitor_result.unwrap()?;
                 (verdict, run_time, memory_usage) = monitor_result;
             }
             err = async {
