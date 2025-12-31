@@ -40,6 +40,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
