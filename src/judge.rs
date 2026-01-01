@@ -6,8 +6,9 @@ use tokio::{
     fs,
     io::{AsyncReadExt, AsyncWriteExt},
 };
+use uuid::Uuid;
 
-use crate::{Language, Metrics, Resource, Sandbox, Verdict, util};
+use crate::{Language, Metrics, Resource, Sandbox, Verdict};
 
 const MAIN: &str = "main";
 const CHECKER: &str = "checker";
@@ -42,7 +43,7 @@ impl Judge<Created> {
         #[builder(default)] resource: Resource,
         #[builder(default)] time_limit: Duration,
     ) -> io::Result<Judge<Created>> {
-        let project_path = env::temp_dir().join(util::random(main.content).to_string());
+        let project_path = env::temp_dir().join(Uuid::new_v4().to_string());
         fs::create_dir(&project_path).await?;
 
         let main_path = project_path

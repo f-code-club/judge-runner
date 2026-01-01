@@ -2,8 +2,7 @@ use std::{io, time::Duration};
 
 use byte_unit::Byte;
 use cgroups_rs::fs::{Cgroup, cgroup_builder::CgroupBuilder, hierarchies};
-
-use crate::util;
+use uuid::Uuid;
 
 const PREFIX: &str = "judge";
 
@@ -28,7 +27,7 @@ impl TryFrom<Resource> for Cgroup {
     type Error = io::Error;
 
     fn try_from(resource: Resource) -> Result<Self, Self::Error> {
-        let builder = CgroupBuilder::new(&format!("{}/{}", PREFIX, util::random(resource)));
+        let builder = CgroupBuilder::new(&format!("{}/{}", PREFIX, Uuid::new_v4()));
 
         let memory = resource.memory.as_u64() as i64;
         let builder = builder
