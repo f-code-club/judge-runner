@@ -2,7 +2,6 @@ mod judge;
 pub mod language;
 mod metrics;
 mod sandbox;
-mod util;
 
 pub use judge::*;
 pub use language::Language;
